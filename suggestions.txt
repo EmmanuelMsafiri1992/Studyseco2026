@@ -1,0 +1,42 @@
+Issues to fix.
+when a student has login on free trial and under on the Dashboard where the user sees account type (Account Type Free Trial 7 Days Free Trial) as it is now when the student clicks on it, it takes the student to http://127.0.0.1:8000/account-settings which is fine but here I need to add a feature to allow the student to upgrade the account type from free trial to premium and once selected premium is selected, the student must be taken to the payment page where the student must be able to
+choose the number of subjects they need to enroll and their access preferred duration hence make the total amount. once payment is approved by the admin the student
+must be able to see the new previous Account with a congratulatory notification.
+
+
+on Extend Access, if the user enrolled on free trial, they must first change their account type from free trial to Premium under Account settings and then continue
+the process of choosing the subjects, duration and then make payment then wait for the approval.
+
+on the main dashboard the student is able to see clearly that the account type is Free Trial but when the student clicks on http://127.0.0.1:8000/student/enrollment
+account type shows premium this can be confusing please fix.
+
+also when the student has signedin he or she must be able to see the his current country where the student registered and must be able to see only the payment methods for that particular country the student registered.
+
+and if the student registered Malawi as a country, the student must be able to see only payment methods for Malawi. also if the student has moved to another country he or she can update the country from Malawi to his or her current country but must provide a proof of his or her new phone number and the admin must first approve this before student changes.
+
+and on this: http://127.0.0.1:8000/payments/create a student must be able to make a payment with the number of subjects selected and preferred duration and the account type must always be premium first. also on this they must be able to see payment receipts and be able to download. also remember whenever a student is making the payment they must be able to access payment terms and conditions which states the following:
+a student will only be allowed to cancel and get a refund of his or her amount only within the first 14days from the day of enrolment with premium account.
+if 14days has passed the student will not be allowed to cancel or will not be able to get any refund from his or her payment.
+make sure they student read and agrees these terms of conditions before making any payment. also the student must agree to be kind to others in system interactions
+like groups and the community must be able to respect others. also a student must read and understand that they will only have access once the payment has been approved within 24hrs to 48hrs. a student can be banned if they above the system by unethical practices like tying to bypass payment methods, hack the system and many more, taking screenshots, downloading videos which are not allowed. Also once the school has been approved the student will be given a number of the student representative where the student will be getting in touch from time to time to ask about the exam dates and also be able to pay for exams.
+
+under http://127.0.0.1:8000/school-selections, the student is only allowed to choose maximum of 5schools and only one among them will be approved for examination, which means a student can choose one school or all the 5 schools and once all one has been approved, the rest will be rejected and the student will not be allowed to apply for other schools after having one school approved.  a student must able to able to see the examination calendar in the system and admin or teacher must be able to update the calendar per academic year in Malawi. and also once the student has approved the center they must be able to see the number of days remaining for exams. and also just after "Confirmed at Selected School" the student must be able to see the student name and the contact details, this must be students own effort to get in touch with the school for exams and as days are approaching for exams the system must send the student popup notification maybe 3month before exams, soon after the student has loggedin must see an alert asking to confirm if they have contacted the school and all is sorted and also if they fail to write exams they must confirm that it is their own fault. this must be recorded in the system and student and teachers must see and also the admin.
+
+under http://127.0.0.1:8000/complaints/create once they have submitted a complaint they must be able to see the history of the complaint so that they see if it was attended or not and must not be able to submit the same complaint multiple times.
+
+under http://127.0.0.1:8000/library when they click on the book, they must not be taken into any new pages but they must be able to see the book right there and be able to open the book page by page without issues either using a phone or tablet of computer they must be able to open the book and read without needing to download.
+
+
+now on the teacher.
+when the teacher visits http://127.0.0.1:8000/teacher/materials he/she is not able to select subjects yet the system already has subjects added this must be fixed. and when you drag and drop a file it says "1 file(s) selected! Upload functionality will be implemented soon." please implement this.
+
+when the teacher has loggedin he must not see his enrollment status since he is part of the staff not a student. and also must not see subjects enrolled, access days left and on access type he must see Teacher as account type. the rest mentioned must be replaced with Total students, Active students and Trials students.
+
+for now these are what I need to be fully fixed and implemented accordingly.
+
+
+
+also soon after loggin the user must be asked to change the password.
+
+
+
