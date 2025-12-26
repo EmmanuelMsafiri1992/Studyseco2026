@@ -573,16 +573,16 @@ onUnmounted(() => {
         <div class="container-custom">
             <div class="flex items-center justify-between h-20">
                 <!-- Logo -->
-                <div class="flex items-center space-x-3">
-                    <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary-600 to-accent-600 flex items-center justify-center shadow-soft">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="text-white">
+                <div class="flex items-center space-x-2 sm:space-x-3">
+                    <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-gradient-to-br from-primary-600 to-accent-600 flex items-center justify-center shadow-soft flex-shrink-0">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="text-white sm:w-6 sm:h-6">
                             <path d="M22 10v6M2 10l10-5 10 5-10 5z"/>
                             <path d="M6 12v5c3 3 9 3 12 0v-5"/>
                         </svg>
                     </div>
-                    <div class="flex flex-col">
-                        <span class="text-2xl font-bold text-secondary-900">StudySeco</span>
-                        <span class="text-xs text-secondary-500 font-medium -mt-1">International Education</span>
+                    <div class="flex flex-col min-w-0">
+                        <span class="text-lg sm:text-2xl font-bold text-secondary-900 truncate">StudySeco</span>
+                        <span class="text-[10px] sm:text-xs text-secondary-500 font-medium -mt-1 truncate">International Education</span>
                     </div>
                 </div>
 
@@ -596,20 +596,20 @@ onUnmounted(() => {
                 </div>
 
                 <!-- CTA Buttons -->
-                <div class="flex items-center space-x-4" v-if="canLogin">
+                <div class="flex items-center space-x-2 sm:space-x-4" v-if="canLogin">
                     <template v-if="$page.props.auth.user">
-                        <Link :href="route('dashboard')" class="btn-secondary">
+                        <Link :href="route('dashboard')" class="btn-secondary btn-sm sm:btn px-3 py-2 sm:px-6 sm:py-3 text-xs sm:text-sm">
                             Dashboard
                         </Link>
-                        <button @click="toggleEnrollmentModal" class="btn-primary">
+                        <button @click="toggleEnrollmentModal" class="btn-primary btn-sm sm:btn hidden sm:inline-flex px-3 py-2 sm:px-6 sm:py-3 text-xs sm:text-sm">
                             Extend/Enroll
                         </button>
                     </template>
                     <template v-else>
-                        <Link :href="route('login')" class="btn-secondary">
+                        <Link :href="route('login')" class="btn-secondary btn-sm sm:btn px-3 py-2 sm:px-6 sm:py-3 text-xs sm:text-sm">
                             Sign In
                         </Link>
-                        <button @click="toggleEnrollmentModal" class="btn-primary">
+                        <button @click="toggleEnrollmentModal" class="btn-primary btn-sm sm:btn hidden sm:inline-flex px-3 py-2 sm:px-6 sm:py-3 text-xs sm:text-sm">
                             Enroll Now
                         </button>
                     </template>
