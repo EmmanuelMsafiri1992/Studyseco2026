@@ -1314,7 +1314,7 @@ onUnmounted(() => {
                                 <div class="flex items-center mb-4">
                                     <input type="radio" v-model="enrollmentForm.enrollment_type" value="trial" class="mr-3 text-green-500">
                                     <div class="flex items-center space-x-2">
-                                        <span class="text-2xl">🎯</span>
+                                        <span class="text-2xl">🎁</span>
                                         <h5 class="font-bold text-green-700 text-lg">Free 7-Day Trial</h5>
                                     </div>
                                 </div>
@@ -1478,7 +1478,7 @@ onUnmounted(() => {
                         <div class="grid md:grid-cols-2 gap-4 text-sm">
                             <div>
                                 <p class="text-blue-700 mb-1"><strong>Enrollment Type:</strong></p>
-                                <p class="text-blue-600">{{ enrollmentForm.enrollment_type === 'trial' ? '🎯 7-Day Free Trial' : '📚 4-Month Full Access' }}</p>
+                                <p class="text-blue-600">{{ enrollmentForm.enrollment_type === 'trial' ? '🎁 7-Day Free Trial' : '📚 4-Month Full Access' }}</p>
                             </div>
                             <div>
                                 <p class="text-blue-700 mb-1"><strong>Subjects Selected:</strong></p>
@@ -1687,7 +1687,7 @@ onUnmounted(() => {
                             </svg>
                             Processing...
                         </span>
-                        <span v-else-if="enrollmentForm.enrollment_type === 'trial'">🎯 Start Free Trial</span>
+                        <span v-else-if="enrollmentForm.enrollment_type === 'trial'">🎁 Start Free Trial</span>
                         <span v-else>💳 Submit for Payment Verification</span>
                     </button>
                 </div>
