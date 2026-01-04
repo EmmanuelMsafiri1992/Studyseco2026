@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\ChatbotController;
 use App\Http\Controllers\Api\MobileAuthController;
 use App\Http\Controllers\Api\MobileDataController;
+use App\Http\Controllers\Api\MobileEnrollmentController;
 use App\Models\User;
 
 /*
@@ -47,6 +48,17 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/notifications/{id}/read', [MobileDataController::class, 'markNotificationRead']);
     Route::post('/notifications/read-all', [MobileDataController::class, 'markAllNotificationsRead']);
     Route::delete('/notifications/{id}', [MobileDataController::class, 'deleteNotification']);
+
+    // Enrollment & Payments
+    Route::get('/payment-methods', [MobileEnrollmentController::class, 'paymentMethods']);
+    Route::get('/access-durations', [MobileEnrollmentController::class, 'accessDurations']);
+    Route::get('/enrollment/subjects', [MobileEnrollmentController::class, 'availableSubjects']);
+    Route::post('/enrollment/pricing', [MobileEnrollmentController::class, 'calculatePricing']);
+    Route::post('/enrollment/submit', [MobileEnrollmentController::class, 'submitEnrollment']);
+    Route::post('/enrollment/trial', [MobileEnrollmentController::class, 'startTrial']);
+    Route::post('/enrollment/extend', [MobileEnrollmentController::class, 'extendEnrollment']);
+    Route::get('/enrollment/status', [MobileEnrollmentController::class, 'enrollmentStatus']);
+    Route::get('/payments', [MobileEnrollmentController::class, 'paymentHistory']);
 });
 
 // Chatbot API routes for landing page integration
