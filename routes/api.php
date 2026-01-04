@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\ChatbotController;
+use App\Http\Controllers\Api\MobileAuthController;
 use App\Models\User;
 
 /*
@@ -14,6 +15,22 @@ use App\Models\User;
 | is assigned the "api" middleware group.
 |
 */
+
+// Mobile App Authentication Routes
+Route::post('/login', [MobileAuthController::class, 'login']);
+Route::post('/register', [MobileAuthController::class, 'register']);
+Route::post('/verify-email', [MobileAuthController::class, 'verifyEmail']);
+Route::post('/resend-otp', [MobileAuthController::class, 'resendOtp']);
+Route::post('/forgot-password', [MobileAuthController::class, 'forgotPassword']);
+Route::post('/reset-password', [MobileAuthController::class, 'resetPassword']);
+
+// Authenticated Mobile App Routes
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/user', [MobileAuthController::class, 'user']);
+    Route::put('/user/profile', [MobileAuthController::class, 'updateProfile']);
+    Route::post('/user/change-password', [MobileAuthController::class, 'changePassword']);
+    Route::post('/logout', [MobileAuthController::class, 'logout']);
+});
 
 // Chatbot API routes for landing page integration
 Route::prefix('chatbot')->name('api.chatbot.')->group(function () {
