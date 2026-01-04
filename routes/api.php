@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\ChatbotController;
 use App\Http\Controllers\Api\MobileAuthController;
+use App\Http\Controllers\Api\MobileDataController;
 use App\Models\User;
 
 /*
@@ -26,10 +27,26 @@ Route::post('/reset-password', [MobileAuthController::class, 'resetPassword']);
 
 // Authenticated Mobile App Routes
 Route::middleware('auth:sanctum')->group(function () {
+    // Auth
     Route::get('/user', [MobileAuthController::class, 'user']);
     Route::put('/user/profile', [MobileAuthController::class, 'updateProfile']);
     Route::post('/user/change-password', [MobileAuthController::class, 'changePassword']);
     Route::post('/logout', [MobileAuthController::class, 'logout']);
+
+    // Dashboard
+    Route::get('/student/dashboard', [MobileDataController::class, 'dashboard']);
+    Route::get('/student/subjects', [MobileDataController::class, 'studentSubjects']);
+
+    // Subjects
+    Route::get('/subjects', [MobileDataController::class, 'subjects']);
+    Route::get('/subjects/{id}', [MobileDataController::class, 'subjectDetail']);
+    Route::get('/departments', [MobileDataController::class, 'departments']);
+
+    // Notifications
+    Route::get('/notifications', [MobileDataController::class, 'notifications']);
+    Route::post('/notifications/{id}/read', [MobileDataController::class, 'markNotificationRead']);
+    Route::post('/notifications/read-all', [MobileDataController::class, 'markAllNotificationsRead']);
+    Route::delete('/notifications/{id}', [MobileDataController::class, 'deleteNotification']);
 });
 
 // Chatbot API routes for landing page integration
