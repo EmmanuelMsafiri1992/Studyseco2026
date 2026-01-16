@@ -724,6 +724,14 @@ Route::middleware('auth')->group(function () {
         Route::post('/', [SystemSettingsController::class, 'update'])->name('update');
     });
 
+    // Admin Cloud Storage Test Routes
+    Route::post('/admin/s3/test', [SystemSettingsController::class, 'testS3Connection'])
+        ->name('admin.s3.test')
+        ->middleware('role:admin');
+    Route::post('/admin/gcs/test', [SystemSettingsController::class, 'testGcsConnection'])
+        ->name('admin.gcs.test')
+        ->middleware('role:admin');
+
     // Admin Department Management Routes
     Route::middleware('role:admin')->prefix('admin')->name('admin.')->group(function () {
         Route::resource('departments', \App\Http\Controllers\Admin\DepartmentController::class);

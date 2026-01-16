@@ -4,9 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\Lesson;
 use App\Models\Topic;
+use App\Services\CloudStorageService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use getID3;
 
 class LessonController extends Controller
@@ -31,33 +33,48 @@ class LessonController extends Controller
 
         $lesson = new Lesson($validated);
 
+        // Initialize S3 storage service
+        $storageService = new CloudStorageService();
+
         // Handle traditional file upload
         if ($request->hasFile('video')) {
             $video = $request->file('video');
-            $videoPath = $video->store('lessons/videos', 'public');
-            
+            $filename = Str::uuid() . '_' . $video->getClientOriginalName();
+
+            // Use S3 if enabled, otherwise use public disk
+            if ($storageService->isEnabled()) {
+                $videoPath = $storageService->store('lessons/videos', $video, $filename);
+                $lesson->storage_disk = 's3';
+            } else {
+                $videoPath = $video->storeAs('lessons/videos', $filename, 'public');
+                $lesson->storage_disk = 'public';
+            }
+
             $lesson->video_path = $videoPath;
             $lesson->video_filename = $video->getClientOriginalName();
 
-            // Try to get video duration
-            try {
-                $fullPath = storage_path('app/public/' . $videoPath);
-                if (class_exists('getID3')) {
-                    $getID3 = new getID3();
-                    $fileInfo = $getID3->analyze($fullPath);
-                    if (isset($fileInfo['playtime_seconds'])) {
-                        $lesson->duration_minutes = ceil($fileInfo['playtime_seconds'] / 60);
+            // Try to get video duration (only for local storage)
+            if (!$storageService->isEnabled()) {
+                try {
+                    $fullPath = storage_path('app/public/' . $videoPath);
+                    if (class_exists('getID3')) {
+                        $getID3 = new getID3();
+                        $fileInfo = $getID3->analyze($fullPath);
+                        if (isset($fileInfo['playtime_seconds'])) {
+                            $lesson->duration_minutes = ceil($fileInfo['playtime_seconds'] / 60);
+                        }
                     }
+                } catch (\Exception $e) {
+                    // Continue without duration if there's an error
                 }
-            } catch (\Exception $e) {
-                // Continue without duration if there's an error
             }
         }
         // Handle chunked upload (video already processed and stored)
         elseif ($request->has('video_path')) {
             $lesson->video_path = $validated['video_path'];
             $lesson->video_filename = $validated['video_filename'] ?? 'uploaded_video.mp4';
-            
+            $lesson->storage_disk = $request->input('storage_disk', 'public');
+
             if (isset($validated['duration_minutes'])) {
                 $lesson->duration_minutes = $validated['duration_minutes'];
             }
@@ -110,29 +127,44 @@ class LessonController extends Controller
         ]);
 
         if ($request->hasFile('video')) {
+            // Initialize S3 storage service
+            $storageService = new CloudStorageService();
+
             // Delete old video if exists
             if ($lesson->video_path) {
-                Storage::disk('public')->delete($lesson->video_path);
+                $oldDisk = $lesson->storage_disk ?? 'public';
+                Storage::disk($oldDisk)->delete($lesson->video_path);
             }
 
             $video = $request->file('video');
-            $videoPath = $video->store('lessons/videos', 'public');
-            
+            $filename = Str::uuid() . '_' . $video->getClientOriginalName();
+
+            // Use S3 if enabled, otherwise use public disk
+            if ($storageService->isEnabled()) {
+                $videoPath = $storageService->store('lessons/videos', $video, $filename);
+                $validated['storage_disk'] = 's3';
+            } else {
+                $videoPath = $video->storeAs('lessons/videos', $filename, 'public');
+                $validated['storage_disk'] = 'public';
+            }
+
             $validated['video_path'] = $videoPath;
             $validated['video_filename'] = $video->getClientOriginalName();
 
-            // Try to get video duration
-            try {
-                $fullPath = storage_path('app/public/' . $videoPath);
-                if (class_exists('getID3')) {
-                    $getID3 = new getID3();
-                    $fileInfo = $getID3->analyze($fullPath);
-                    if (isset($fileInfo['playtime_seconds'])) {
-                        $validated['duration_minutes'] = ceil($fileInfo['playtime_seconds'] / 60);
+            // Try to get video duration (only for local storage)
+            if (!$storageService->isEnabled()) {
+                try {
+                    $fullPath = storage_path('app/public/' . $videoPath);
+                    if (class_exists('getID3')) {
+                        $getID3 = new getID3();
+                        $fileInfo = $getID3->analyze($fullPath);
+                        if (isset($fileInfo['playtime_seconds'])) {
+                            $validated['duration_minutes'] = ceil($fileInfo['playtime_seconds'] / 60);
+                        }
                     }
+                } catch (\Exception $e) {
+                    // Continue without duration if there's an error
                 }
-            } catch (\Exception $e) {
-                // Continue without duration if there's an error
             }
         }
 
@@ -148,7 +180,8 @@ class LessonController extends Controller
     public function destroy(Lesson $lesson)
     {
         if ($lesson->video_path) {
-            Storage::disk('public')->delete($lesson->video_path);
+            $disk = $lesson->storage_disk ?? 'public';
+            Storage::disk($disk)->delete($lesson->video_path);
         }
 
         $lesson->delete();

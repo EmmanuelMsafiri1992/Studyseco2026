@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\SystemSetting;
+use App\Services\CloudStorageService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -252,6 +253,124 @@ class SystemSettingsController extends Controller
                 'type' => 'json',
                 'group' => 'academic',
                 'description' => 'Available grade levels'
+            ],
+
+            // Cloud Storage Settings
+            [
+                'key' => 'cloud_storage_provider',
+                'name' => 'Cloud Storage Provider',
+                'value' => 'local',
+                'type' => 'text',
+                'group' => 'storage',
+                'description' => 'Select cloud storage provider: local, s3, or gcs'
+            ],
+
+            // S3 Storage Settings
+            [
+                'key' => 's3_enabled',
+                'name' => 'Enable S3 Storage',
+                'value' => false,
+                'type' => 'boolean',
+                'group' => 'storage',
+                'description' => 'Enable Amazon S3 for video storage and streaming'
+            ],
+            [
+                'key' => 's3_access_key',
+                'name' => 'AWS Access Key ID',
+                'value' => '',
+                'type' => 'text',
+                'group' => 'storage',
+                'description' => 'Your AWS Access Key ID'
+            ],
+            [
+                'key' => 's3_secret_key',
+                'name' => 'AWS Secret Access Key',
+                'value' => '',
+                'type' => 'password',
+                'group' => 'storage',
+                'description' => 'Your AWS Secret Access Key (stored securely)'
+            ],
+            [
+                'key' => 's3_bucket',
+                'name' => 'S3 Bucket Name',
+                'value' => '',
+                'type' => 'text',
+                'group' => 'storage',
+                'description' => 'The name of your S3 bucket'
+            ],
+            [
+                'key' => 's3_region',
+                'name' => 'AWS Region',
+                'value' => 'us-east-1',
+                'type' => 'text',
+                'group' => 'storage',
+                'description' => 'AWS region (e.g., us-east-1, eu-west-1)'
+            ],
+            [
+                'key' => 's3_url',
+                'name' => 'S3 URL / CloudFront URL',
+                'value' => '',
+                'type' => 'url',
+                'group' => 'storage',
+                'description' => 'Custom URL for S3 or CloudFront distribution (optional)'
+            ],
+            [
+                'key' => 's3_endpoint',
+                'name' => 'Custom S3 Endpoint',
+                'value' => '',
+                'type' => 'url',
+                'group' => 'storage',
+                'description' => 'Custom endpoint for S3-compatible services (leave empty for AWS S3)'
+            ],
+
+            // Google Cloud Storage Settings
+            [
+                'key' => 'gcs_enabled',
+                'name' => 'Enable Google Cloud Storage',
+                'value' => false,
+                'type' => 'boolean',
+                'group' => 'storage',
+                'description' => 'Enable Google Cloud Storage for video storage and streaming'
+            ],
+            [
+                'key' => 'gcs_project_id',
+                'name' => 'GCS Project ID',
+                'value' => '',
+                'type' => 'text',
+                'group' => 'storage',
+                'description' => 'Your Google Cloud project ID'
+            ],
+            [
+                'key' => 'gcs_bucket',
+                'name' => 'GCS Bucket Name',
+                'value' => '',
+                'type' => 'text',
+                'group' => 'storage',
+                'description' => 'The name of your Google Cloud Storage bucket'
+            ],
+            [
+                'key' => 'gcs_key_file',
+                'name' => 'GCS Service Account Key (JSON)',
+                'value' => '',
+                'type' => 'textarea',
+                'group' => 'storage',
+                'description' => 'Paste your service account JSON key file contents'
+            ],
+            [
+                'key' => 'gcs_path_prefix',
+                'name' => 'GCS Path Prefix',
+                'value' => '',
+                'type' => 'text',
+                'group' => 'storage',
+                'description' => 'Optional path prefix for files in the bucket'
+            ],
+            [
+                'key' => 'gcs_url',
+                'name' => 'GCS Custom URL / CDN URL',
+                'value' => '',
+                'type' => 'url',
+                'group' => 'storage',
+                'description' => 'Custom URL or Cloud CDN URL for faster delivery (optional)'
             ]
         ];
 
@@ -261,5 +380,55 @@ class SystemSettingsController extends Controller
                 $setting
             );
         }
+    }
+
+    /**
+     * Test S3 connection with provided credentials
+     */
+    public function testS3Connection(Request $request)
+    {
+        // Check if user is admin
+        if (auth()->user()->role !== 'admin') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only administrators can test S3 connection.'
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'access_key' => 'required|string',
+            'secret_key' => 'required|string',
+            'bucket' => 'required|string',
+            'region' => 'required|string',
+            'endpoint' => 'nullable|string',
+        ]);
+
+        $result = CloudStorageService::testS3Connection($validated);
+
+        return response()->json($result);
+    }
+
+    /**
+     * Test GCS connection with provided credentials
+     */
+    public function testGcsConnection(Request $request)
+    {
+        // Check if user is admin
+        if (auth()->user()->role !== 'admin') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only administrators can test GCS connection.'
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'project_id' => 'required|string',
+            'bucket' => 'required|string',
+            'key_file' => 'required|string',
+        ]);
+
+        $result = CloudStorageService::testGcsConnection($validated);
+
+        return response()->json($result);
     }
 }

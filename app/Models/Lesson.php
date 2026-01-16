@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\CloudStorageService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -21,6 +22,7 @@ class Lesson extends Model
         'notes',
         'order_index',
         'is_published',
+        'storage_disk',
     ];
 
     protected $casts = [
@@ -44,10 +46,19 @@ class Lesson extends Model
 
     public function getVideoUrlAttribute()
     {
-        if ($this->video_path) {
-            return Storage::url($this->video_path);
+        if (!$this->video_path) {
+            return null;
         }
-        return null;
+
+        $disk = $this->storage_disk ?? 'public';
+
+        if ($disk === 's3' || $disk === 'gcs') {
+            // Get cloud storage URL from storage service
+            $storageService = new CloudStorageService();
+            return $storageService->url($this->video_path);
+        }
+
+        return Storage::url($this->video_path);
     }
 
     public function getFormattedDurationAttribute()

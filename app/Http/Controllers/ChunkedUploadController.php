@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\CloudStorageService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -100,31 +101,34 @@ class ChunkedUploadController extends Controller
     {
         $tempDir = "temp/uploads/{$uploadId}";
         $metadataPath = "{$tempDir}/metadata.json";
-        
+
         if (!Storage::disk('public')->exists($metadataPath)) {
             return response()->json(['error' => 'Upload session not found'], 404);
         }
-        
+
         $metadata = json_decode(Storage::disk('public')->get($metadataPath), true);
-        
+
         // Check if all chunks are uploaded
         if (count($metadata['uploadedChunks']) !== $metadata['totalChunks']) {
             return response()->json(['error' => 'Not all chunks uploaded'], 400);
         }
-        
-        // Combine chunks
+
+        // Initialize cloud storage service
+        $storageService = new CloudStorageService();
+
+        // Combine chunks locally first
         $finalFileName = 'lessons/videos/' . Str::uuid() . '_' . $metadata['fileName'];
-        $finalPath = storage_path('app/public/' . $finalFileName);
-        
+        $localFinalPath = storage_path('app/public/' . $finalFileName);
+
         // Create directory if it doesn't exist
-        $directory = dirname($finalPath);
+        $directory = dirname($localFinalPath);
         if (!file_exists($directory)) {
             mkdir($directory, 0755, true);
         }
-        
+
         // Combine chunks in order
-        $finalFile = fopen($finalPath, 'wb');
-        
+        $finalFile = fopen($localFinalPath, 'wb');
+
         for ($i = 0; $i < $metadata['totalChunks']; $i++) {
             $chunkPath = storage_path("app/public/{$tempDir}/chunk_{$i}");
             if (file_exists($chunkPath)) {
@@ -132,18 +136,15 @@ class ChunkedUploadController extends Controller
                 fwrite($finalFile, $chunkData);
             }
         }
-        
+
         fclose($finalFile);
-        
-        // Clean up temporary files
-        $this->cleanupTempFiles($tempDir);
-        
+
         // Get video duration if possible
         $duration = null;
         try {
             if (class_exists('getID3')) {
                 $getID3 = new \getID3();
-                $fileInfo = $getID3->analyze($finalPath);
+                $fileInfo = $getID3->analyze($localFinalPath);
                 if (isset($fileInfo['playtime_seconds'])) {
                     $duration = ceil($fileInfo['playtime_seconds'] / 60);
                 }
@@ -151,12 +152,39 @@ class ChunkedUploadController extends Controller
         } catch (\Exception $e) {
             // Continue without duration
         }
-        
+
+        $storageDisk = 'public';
+        $finalFileSize = filesize($localFinalPath);
+
+        // If cloud storage is enabled, upload the combined file to cloud
+        if ($storageService->isEnabled()) {
+            try {
+                $cloudDisk = $storageService->getDisk();
+
+                // Upload to cloud storage
+                $fileStream = fopen($localFinalPath, 'r');
+                Storage::disk($cloudDisk)->put($finalFileName, $fileStream, 'public');
+                fclose($fileStream);
+
+                // Delete the local file after successful cloud upload
+                unlink($localFinalPath);
+
+                $storageDisk = $cloudDisk;
+            } catch (\Exception $e) {
+                // If cloud upload fails, keep local file and log error
+                \Log::error("Cloud storage upload failed for chunked upload: " . $e->getMessage());
+            }
+        }
+
+        // Clean up temporary files
+        $this->cleanupTempFiles($tempDir);
+
         return response()->json([
             'success' => true,
             'filePath' => $finalFileName,
-            'fileSize' => filesize($finalPath),
+            'fileSize' => $finalFileSize,
             'duration' => $duration,
+            'storage_disk' => $storageDisk,
             'message' => 'Video uploaded successfully!',
         ]);
     }
