@@ -1,6 +1,8 @@
 <script setup>
 import { Head, Link } from '@inertiajs/vue3';
 import { ref, computed, onMounted, nextTick } from 'vue';
+import ChunkedVideoUpload from '@/components/ChunkedVideoUpload.vue';
+import axios from 'axios';
 
 const props = defineProps({
     auth: Object,
@@ -9,10 +11,40 @@ const props = defineProps({
 
 const user = props.auth?.user || { name: 'Guest', role: 'guest', profile_photo_url: null };
 
+// Check if user can manage content (admin or teacher)
+const canManageContent = computed(() => {
+    return user.role === 'admin' || user.role === 'teacher';
+});
+
 const showSidebar = ref(true);
 const isMobile = ref(false);
 const expandedModules = ref(new Set());
 const selectedLesson = ref(null);
+
+// Admin functionality - Topic and Lesson management
+const selectedTopicId = ref(props.subject?.topics?.[0]?.id || null);
+const showAddTopicForm = ref(false);
+const showAddLessonForm = ref(false);
+
+const newTopic = ref({
+    name: '',
+    description: '',
+});
+
+const newLesson = ref({
+    title: '',
+    description: '',
+    notes: '',
+    videoData: null,
+});
+
+const isUploading = ref(false);
+const uploadProgress = ref(0);
+const showChunkedUpload = ref(false);
+
+const selectedTopic = computed(() => {
+    return props.subject?.topics?.find(topic => topic.id === selectedTopicId.value);
+});
 
 // AI Tutor Chat functionality
 const showAIChat = ref(true);
@@ -107,6 +139,113 @@ const generateAIResponse = (userMessage) => {
     return responses[Math.floor(Math.random() * responses.length)];
 };
 
+// Admin Functions - Topic Management
+const addTopic = async () => {
+    try {
+        const response = await axios.post(route('topics.store'), {
+            subject_id: props.subject.id,
+            name: newTopic.value.name,
+            description: newTopic.value.description,
+        });
+
+        if (response.data.success) {
+            // Add the new topic to the existing topics
+            props.subject.topics.push(response.data.topic);
+
+            // Reset form
+            newTopic.value = { name: '', description: '' };
+            showAddTopicForm.value = false;
+
+            // Select the new topic and expand it
+            selectedTopicId.value = response.data.topic.id;
+            expandedModules.value.add(response.data.topic.id);
+        }
+    } catch (error) {
+        console.error('Error adding topic:', error);
+        alert('Error adding topic. Please try again.');
+    }
+};
+
+const cancelAddTopic = () => {
+    newTopic.value = { name: '', description: '' };
+    showAddTopicForm.value = false;
+};
+
+// Admin Functions - Lesson Management
+const addLesson = async () => {
+    if (isUploading.value) return;
+
+    try {
+        isUploading.value = true;
+
+        const formData = new FormData();
+        formData.append('topic_id', selectedTopicId.value);
+        formData.append('title', newLesson.value.title);
+        formData.append('description', newLesson.value.description);
+        formData.append('notes', newLesson.value.notes);
+
+        // If we have chunked video data, use that
+        if (newLesson.value.videoData) {
+            formData.append('video_path', newLesson.value.videoData.filePath);
+            formData.append('video_filename', newLesson.value.videoData.fileName || 'uploaded_video.mp4');
+            if (newLesson.value.videoData.duration) {
+                formData.append('duration_minutes', newLesson.value.videoData.duration);
+            }
+            if (newLesson.value.videoData.storageDisk) {
+                formData.append('storage_disk', newLesson.value.videoData.storageDisk);
+            }
+        }
+
+        const response = await axios.post(route('lessons.store'), formData);
+
+        if (response.data.success) {
+            // Add the new lesson to the selected topic
+            const topic = props.subject.topics.find(t => t.id === selectedTopicId.value);
+            if (topic) {
+                if (!topic.lessons) topic.lessons = [];
+                topic.lessons.push(response.data.lesson);
+            }
+
+            // Reset form
+            newLesson.value = { title: '', description: '', notes: '', videoData: null };
+            showAddLessonForm.value = false;
+            showChunkedUpload.value = false;
+        }
+    } catch (error) {
+        console.error('Error adding lesson:', error);
+        alert('Error adding lesson. Please try again.');
+    } finally {
+        isUploading.value = false;
+        uploadProgress.value = 0;
+    }
+};
+
+const handleVideoUploadSuccess = (uploadResult) => {
+    newLesson.value.videoData = uploadResult;
+    showChunkedUpload.value = false;
+};
+
+const handleVideoUploadError = (error) => {
+    console.error('Video upload error:', error);
+    alert('Video upload failed. Please try again.');
+};
+
+const removeVideo = () => {
+    newLesson.value.videoData = null;
+    showChunkedUpload.value = false;
+};
+
+const cancelAddLesson = () => {
+    newLesson.value = { title: '', description: '', notes: '', videoData: null };
+    showAddLessonForm.value = false;
+    showChunkedUpload.value = false;
+};
+
+const selectTopicForLesson = (topicId) => {
+    selectedTopicId.value = topicId;
+    showAddLessonForm.value = true;
+};
+
 onMounted(() => {
     checkMobile();
     window.addEventListener('resize', checkMobile);
@@ -166,8 +305,27 @@ onMounted(() => {
             </div>
             
             <div class="flex items-center space-x-3 flex-shrink-0">
+                <!-- Admin Controls - Add Topic and Lesson -->
+                <template v-if="canManageContent">
+                    <button @click="showAddTopicForm = true"
+                            class="hidden md:flex items-center space-x-2 px-3 py-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl font-medium hover:from-emerald-600 hover:to-teal-700 transition-all duration-200 shadow-md hover:shadow-lg text-sm">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                        </svg>
+                        <span>Add Topic</span>
+                    </button>
+
+                    <button @click="showAddLessonForm = true" :disabled="!selectedTopic && !(subject?.topics?.length > 0)"
+                            class="hidden md:flex items-center space-x-2 px-3 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-xl font-medium hover:from-indigo-600 hover:to-purple-700 transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed text-sm">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                        </svg>
+                        <span>Add Lesson</span>
+                    </button>
+                </template>
+
                 <!-- AI Chat Toggle -->
-                <button @click="toggleAIChat" 
+                <button @click="toggleAIChat"
                         :class="[
                             'p-2 rounded-xl transition-all duration-200 hidden lg:block',
                             showAIChat ? 'bg-green-100 text-green-600' : 'hover:bg-slate-100 text-slate-600'
@@ -176,7 +334,7 @@ onMounted(() => {
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.645C5.525 14.88 7.42 16 9 16c2.31 0 4.792-.88 6-2.5l-.5-1.5"></path>
                     </svg>
                 </button>
-                
+
                 <div class="text-right hidden sm:block">
                     <p class="text-sm font-semibold text-slate-800">{{ user.name }}</p>
                     <p class="text-xs text-slate-500">{{ user.role }}</p>
@@ -472,16 +630,162 @@ onMounted(() => {
         </div>
 
         <!-- Mobile Overlays -->
-        <div 
-            v-if="isMobile && showSidebar" 
-            @click="toggleSidebar" 
+        <div
+            v-if="isMobile && showSidebar"
+            @click="toggleSidebar"
             class="fixed inset-0 bg-black/50 z-30 lg:hidden"
         ></div>
-        
-        <div 
-            v-if="isMobile && showAIChat" 
-            @click="toggleAIChat" 
+
+        <div
+            v-if="isMobile && showAIChat"
+            @click="toggleAIChat"
             class="fixed inset-0 bg-black/50 z-30 lg:hidden"
         ></div>
+
+        <!-- Add Topic Modal -->
+        <div v-if="showAddTopicForm" class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+            <div class="bg-white/90 backdrop-blur-xl rounded-3xl p-8 shadow-2xl border border-slate-200/50 max-w-md w-full mx-4">
+                <h3 class="text-xl font-bold text-slate-800 mb-6">Add New Topic</h3>
+                <form @submit.prevent="addTopic">
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-2">Topic Name*</label>
+                            <input v-model="newTopic.name" type="text" required
+                                   class="w-full bg-slate-100/70 px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:bg-white transition-all duration-200"
+                                   placeholder="e.g. Introduction, Basic Concepts">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-2">Description</label>
+                            <textarea v-model="newTopic.description" rows="3"
+                                      class="w-full bg-slate-100/70 px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:bg-white transition-all duration-200"
+                                      placeholder="Brief description of this topic..."></textarea>
+                        </div>
+                    </div>
+                    <div class="flex justify-end space-x-4 mt-6">
+                        <button type="button" @click="cancelAddTopic"
+                                class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-medium transition-all duration-200">
+                            Cancel
+                        </button>
+                        <button type="submit"
+                                class="px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl font-medium hover:from-emerald-600 hover:to-teal-700 transition-all duration-200 shadow-md hover:shadow-lg">
+                            Add Topic
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Add Lesson Modal -->
+        <div v-if="showAddLessonForm" class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+            <div class="bg-white/90 backdrop-blur-xl rounded-3xl p-8 shadow-2xl border border-slate-200/50 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+                <h3 class="text-xl font-bold text-slate-800 mb-6">Add New Lesson</h3>
+                <form @submit.prevent="addLesson">
+                    <div class="space-y-6">
+                        <!-- Topic Selection -->
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-2">Select Topic*</label>
+                            <select v-model="selectedTopicId" required
+                                    class="w-full bg-slate-100/70 px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-white transition-all duration-200">
+                                <option v-for="topic in subject?.topics" :key="topic.id" :value="topic.id">
+                                    {{ topic.name }}
+                                </option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-2">Lesson Title*</label>
+                            <input v-model="newLesson.title" type="text" required
+                                   class="w-full bg-slate-100/70 px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-white transition-all duration-200"
+                                   placeholder="e.g. Introduction to Algebra">
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-2">Description</label>
+                            <textarea v-model="newLesson.description" rows="3"
+                                      class="w-full bg-slate-100/70 px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-white transition-all duration-200"
+                                      placeholder="What will students learn in this lesson?"></textarea>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-2">Video File</label>
+
+                            <!-- Video Upload Interface -->
+                            <div v-if="!newLesson.videoData && !showChunkedUpload" class="space-y-3">
+                                <button @click="showChunkedUpload = true" type="button"
+                                        class="w-full bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-dashed border-blue-300 rounded-2xl p-6 hover:border-blue-400 hover:bg-gradient-to-r hover:from-blue-100 hover:to-indigo-100 transition-all duration-200">
+                                    <div class="text-center">
+                                        <svg class="mx-auto h-12 w-12 text-blue-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+                                            <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                                        </svg>
+                                        <p class="mt-2 text-sm font-medium text-slate-700">Upload Video File</p>
+                                        <p class="text-xs text-slate-500">Fast chunked upload with compression</p>
+                                        <p class="text-xs text-slate-400 mt-1">MP4, MOV, AVI, WMV, MKV up to 1GB</p>
+                                    </div>
+                                </button>
+                            </div>
+
+                            <!-- Chunked Upload Component -->
+                            <ChunkedVideoUpload
+                                v-if="showChunkedUpload"
+                                @upload-success="handleVideoUploadSuccess"
+                                @upload-error="handleVideoUploadError"
+                                @cancel="showChunkedUpload = false"
+                                class="mt-3"
+                            />
+
+                            <!-- Video Selected State -->
+                            <div v-if="newLesson.videoData" class="mt-3 p-4 bg-green-50 border border-green-200 rounded-xl">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center space-x-3">
+                                        <div class="flex-shrink-0">
+                                            <svg class="h-8 w-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                            </svg>
+                                        </div>
+                                        <div>
+                                            <p class="text-sm font-medium text-green-800">Video uploaded successfully!</p>
+                                            <p class="text-xs text-green-600">
+                                                {{ newLesson.videoData.fileName }}
+                                                <span v-if="newLesson.videoData.duration" class="ml-2">{{ newLesson.videoData.duration }} min</span>
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <button @click="removeVideo" type="button" class="text-green-600 hover:text-green-800">
+                                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-2">Lesson Notes</label>
+                            <textarea v-model="newLesson.notes" rows="4"
+                                      class="w-full bg-slate-100/70 px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-white transition-all duration-200"
+                                      placeholder="Additional notes, resources, or homework for this lesson..."></textarea>
+                        </div>
+                    </div>
+
+                    <div class="flex justify-end space-x-4 mt-8">
+                        <button type="button" @click="cancelAddLesson"
+                                class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-medium transition-all duration-200">
+                            Cancel
+                        </button>
+                        <button type="submit" :disabled="isUploading"
+                                class="px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-xl font-medium hover:from-indigo-600 hover:to-purple-700 transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed">
+                            <span v-if="!isUploading">Add Lesson</span>
+                            <span v-else class="flex items-center space-x-2">
+                                <svg class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                                    <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" class="opacity-25"></circle>
+                                    <path fill="currentColor" class="opacity-75" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                <span>Saving...</span>
+                            </span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
     </div>
 </template>
