@@ -390,14 +390,17 @@ const uploadChunksConcurrent = async (file, totalChunksCount) => {
 const uploadChunk = async (file, chunkIndex) => {
     const start = chunkIndex * props.chunkSize
     const end = Math.min(start + props.chunkSize, file.size)
-    const chunk = file.slice(start, end)
+    const chunkBlob = file.slice(start, end)
+
+    // Convert Blob to File so Laravel recognizes it as a file upload
+    const chunkFile = new File([chunkBlob], `chunk_${chunkIndex}`, { type: file.type || 'application/octet-stream' })
 
     const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
 
     const formData = new FormData()
-    formData.append('chunk', chunk)
-    formData.append('chunkNumber', chunkIndex)
-    formData.append('totalChunks', totalChunks.value)
+    formData.append('chunk', chunkFile, `chunk_${chunkIndex}`)
+    formData.append('chunkNumber', String(chunkIndex))
+    formData.append('totalChunks', String(totalChunks.value))
 
     const response = await fetch(`/api/upload/${uploadId.value}/chunk`, {
         method: 'POST',
