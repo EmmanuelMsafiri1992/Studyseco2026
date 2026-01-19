@@ -128,106 +128,171 @@ class ChunkedUploadController extends Controller
      */
     public function finalize(Request $request, $uploadId)
     {
-        $tempDir = "temp/uploads/{$uploadId}";
-        $metadataPath = "{$tempDir}/metadata.json";
-
-        if (!Storage::disk('public')->exists($metadataPath)) {
-            return response()->json(['success' => false, 'error' => 'Upload session not found'], 404);
-        }
-
-        $metadata = json_decode(Storage::disk('public')->get($metadataPath), true);
-
-        // Count actual chunk files instead of metadata (more reliable)
-        $chunkFiles = Storage::disk('public')->files($tempDir);
-        $actualChunks = array_filter($chunkFiles, function($file) {
-            return str_contains($file, 'chunk_');
-        });
-        $uploadedChunkCount = count($actualChunks);
-
-        // Check if all chunks are uploaded
-        if ($uploadedChunkCount < $metadata['totalChunks']) {
-            return response()->json([
-                'success' => false,
-                'error' => "Not all chunks uploaded. Expected {$metadata['totalChunks']}, got {$uploadedChunkCount}",
-                'expected' => $metadata['totalChunks'],
-                'received' => $uploadedChunkCount,
-            ], 400);
-        }
-
-        // Initialize cloud storage service
-        $storageService = new CloudStorageService();
-
-        // Combine chunks locally first
-        $finalFileName = 'lessons/videos/' . Str::uuid() . '_' . $metadata['fileName'];
-        $localFinalPath = storage_path('app/public/' . $finalFileName);
-
-        // Create directory if it doesn't exist
-        $directory = dirname($localFinalPath);
-        if (!file_exists($directory)) {
-            mkdir($directory, 0755, true);
-        }
-
-        // Combine chunks in order
-        $finalFile = fopen($localFinalPath, 'wb');
-
-        for ($i = 0; $i < $metadata['totalChunks']; $i++) {
-            $chunkPath = storage_path("app/public/{$tempDir}/chunk_{$i}");
-            if (file_exists($chunkPath)) {
-                $chunkData = file_get_contents($chunkPath);
-                fwrite($finalFile, $chunkData);
-            }
-        }
-
-        fclose($finalFile);
-
-        // Get video duration if possible
-        $duration = null;
         try {
-            if (class_exists('getID3')) {
-                $getID3 = new \getID3();
-                $fileInfo = $getID3->analyze($localFinalPath);
-                if (isset($fileInfo['playtime_seconds'])) {
-                    $duration = ceil($fileInfo['playtime_seconds'] / 60);
+            $tempDir = "temp/uploads/{$uploadId}";
+            $metadataPath = "{$tempDir}/metadata.json";
+
+            \Log::info("Finalizing upload: {$uploadId}");
+
+            if (!Storage::disk('public')->exists($metadataPath)) {
+                \Log::error("Upload session not found: {$uploadId}");
+                return response()->json(['success' => false, 'error' => 'Upload session not found'], 404);
+            }
+
+            $metadata = json_decode(Storage::disk('public')->get($metadataPath), true);
+            \Log::info("Metadata loaded", ['totalChunks' => $metadata['totalChunks'], 'fileName' => $metadata['fileName']]);
+
+            // Count actual chunk files instead of metadata (more reliable)
+            $chunkFiles = Storage::disk('public')->files($tempDir);
+            $actualChunks = array_filter($chunkFiles, function($file) {
+                return str_contains($file, 'chunk_');
+            });
+            $uploadedChunkCount = count($actualChunks);
+
+            \Log::info("Chunks found", ['expected' => $metadata['totalChunks'], 'found' => $uploadedChunkCount, 'files' => $actualChunks]);
+
+            // Check if all chunks are uploaded
+            if ($uploadedChunkCount < $metadata['totalChunks']) {
+                return response()->json([
+                    'success' => false,
+                    'error' => "Not all chunks uploaded. Expected {$metadata['totalChunks']}, got {$uploadedChunkCount}",
+                    'expected' => $metadata['totalChunks'],
+                    'received' => $uploadedChunkCount,
+                ], 400);
+            }
+
+            // Initialize cloud storage service
+            $storageService = new CloudStorageService();
+
+            // Combine chunks locally first
+            $finalFileName = 'lessons/videos/' . Str::uuid() . '_' . $metadata['fileName'];
+            $localFinalPath = storage_path('app/public/' . $finalFileName);
+
+            \Log::info("Final path: {$localFinalPath}");
+
+            // Create directory if it doesn't exist
+            $directory = dirname($localFinalPath);
+            if (!file_exists($directory)) {
+                if (!mkdir($directory, 0755, true)) {
+                    \Log::error("Failed to create directory: {$directory}");
+                    return response()->json(['success' => false, 'error' => 'Failed to create video directory'], 500);
                 }
             }
-        } catch (\Exception $e) {
-            // Continue without duration
-        }
 
-        $storageDisk = 'public';
-        $finalFileSize = filesize($localFinalPath);
+            // Combine chunks in order using Storage facade for consistency
+            $combinedContent = '';
+            $totalBytesRead = 0;
 
-        // If cloud storage is enabled, upload the combined file to cloud
-        if ($storageService->isEnabled()) {
-            try {
-                $cloudDisk = $storageService->getDisk();
+            for ($i = 0; $i < $metadata['totalChunks']; $i++) {
+                $chunkRelativePath = "{$tempDir}/chunk_{$i}";
 
-                // Upload to cloud storage
-                $fileStream = fopen($localFinalPath, 'r');
-                Storage::disk($cloudDisk)->put($finalFileName, $fileStream, 'public');
-                fclose($fileStream);
+                if (!Storage::disk('public')->exists($chunkRelativePath)) {
+                    \Log::error("Chunk not found: {$chunkRelativePath}");
+                    return response()->json([
+                        'success' => false,
+                        'error' => "Chunk {$i} not found at {$chunkRelativePath}",
+                    ], 500);
+                }
 
-                // Delete the local file after successful cloud upload
-                unlink($localFinalPath);
+                $chunkData = Storage::disk('public')->get($chunkRelativePath);
+                $chunkSize = strlen($chunkData);
+                $totalBytesRead += $chunkSize;
 
-                $storageDisk = $cloudDisk;
-            } catch (\Exception $e) {
-                // If cloud upload fails, keep local file and log error
-                \Log::error("Cloud storage upload failed for chunked upload: " . $e->getMessage());
+                \Log::info("Reading chunk {$i}", ['size' => $chunkSize, 'totalSoFar' => $totalBytesRead]);
+
+                // Write chunk directly to file to avoid memory issues with large files
+                if ($i === 0) {
+                    $writeResult = file_put_contents($localFinalPath, $chunkData);
+                } else {
+                    $writeResult = file_put_contents($localFinalPath, $chunkData, FILE_APPEND);
+                }
+
+                if ($writeResult === false) {
+                    \Log::error("Failed to write chunk {$i} to final file");
+                    return response()->json([
+                        'success' => false,
+                        'error' => "Failed to write chunk {$i} to final file",
+                    ], 500);
+                }
             }
+
+            // Verify final file was created and has content
+            if (!file_exists($localFinalPath)) {
+                \Log::error("Final file does not exist after combining chunks");
+                return response()->json(['success' => false, 'error' => 'Failed to create final video file'], 500);
+            }
+
+            $finalFileSize = filesize($localFinalPath);
+            \Log::info("Final file created", ['size' => $finalFileSize, 'expectedSize' => $totalBytesRead]);
+
+            if ($finalFileSize === 0) {
+                \Log::error("Final file is empty!");
+                unlink($localFinalPath);
+                return response()->json(['success' => false, 'error' => 'Final video file is empty - chunks may not have been read correctly'], 500);
+            }
+
+            // Get video duration if possible
+            $duration = null;
+            try {
+                if (class_exists('getID3')) {
+                    $getID3 = new \getID3();
+                    $fileInfo = $getID3->analyze($localFinalPath);
+                    if (isset($fileInfo['playtime_seconds'])) {
+                        $duration = ceil($fileInfo['playtime_seconds'] / 60);
+                    }
+                }
+            } catch (\Exception $e) {
+                \Log::warning("Could not get video duration: " . $e->getMessage());
+            }
+
+            $storageDisk = 'public';
+
+            // If cloud storage is enabled, upload the combined file to cloud
+            if ($storageService->isEnabled()) {
+                try {
+                    $cloudDisk = $storageService->getDisk();
+
+                    // Upload to cloud storage
+                    $fileStream = fopen($localFinalPath, 'r');
+                    Storage::disk($cloudDisk)->put($finalFileName, $fileStream, 'public');
+                    fclose($fileStream);
+
+                    // Delete the local file after successful cloud upload
+                    unlink($localFinalPath);
+
+                    $storageDisk = $cloudDisk;
+                } catch (\Exception $e) {
+                    // If cloud upload fails, keep local file and log error
+                    \Log::error("Cloud storage upload failed for chunked upload: " . $e->getMessage());
+                }
+            }
+
+            // Clean up temporary files
+            $this->cleanupTempFiles($tempDir);
+
+            \Log::info("Upload finalized successfully", ['filePath' => $finalFileName, 'size' => $finalFileSize]);
+
+            return response()->json([
+                'success' => true,
+                'filePath' => $finalFileName,
+                'fileSize' => $finalFileSize,
+                'duration' => $duration,
+                'storage_disk' => $storageDisk,
+                'message' => 'Video uploaded successfully!',
+            ]);
+        } catch (\Exception $e) {
+            \Log::error("Finalize upload error: " . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'uploadId' => $uploadId,
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ], 500);
         }
-
-        // Clean up temporary files
-        $this->cleanupTempFiles($tempDir);
-
-        return response()->json([
-            'success' => true,
-            'filePath' => $finalFileName,
-            'fileSize' => $finalFileSize,
-            'duration' => $duration,
-            'storage_disk' => $storageDisk,
-            'message' => 'Video uploaded successfully!',
-        ]);
     }
 
     /**
