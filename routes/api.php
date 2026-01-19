@@ -73,10 +73,25 @@ Route::prefix('chatbot')->name('api.chatbot.')->group(function () {
 // Chunked upload routes - using web middleware for session-based auth
 Route::middleware(['web', 'auth'])->prefix('upload')->name('api.upload.')->group(function () {
     Route::post('/initiate', [App\Http\Controllers\ChunkedUploadController::class, 'initiate'])->name('initiate');
-    Route::post('/{uploadId}/chunk', [App\Http\Controllers\ChunkedUploadController::class, 'uploadChunk'])->name('chunk');
+    Route::post('/{uploadId}/chunk', [App\Http\Controllers\ChunkedUploadController::class, 'uploadChunk'])->name('chunk')->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class]);
     Route::post('/{uploadId}/finalize', [App\Http\Controllers\ChunkedUploadController::class, 'finalize'])->name('finalize');
     Route::get('/{uploadId}/status', [App\Http\Controllers\ChunkedUploadController::class, 'status'])->name('status');
     Route::delete('/{uploadId}/cancel', [App\Http\Controllers\ChunkedUploadController::class, 'cancel'])->name('cancel');
+});
+
+// Debug test route for chunk upload
+Route::middleware(['web', 'auth'])->post('/upload-test', function (\Illuminate\Http\Request $request) {
+    \Log::info('Upload test hit', [
+        'hasFile' => $request->hasFile('chunk'),
+        'allFiles' => array_keys($request->allFiles()),
+        'allInput' => array_keys($request->all()),
+    ]);
+    return response()->json([
+        'success' => true,
+        'hasFile' => $request->hasFile('chunk'),
+        'allFilesKeys' => array_keys($request->allFiles()),
+        'allInputKeys' => array_keys($request->all()),
+    ]);
 });
 
 // User API routes for chat functionality

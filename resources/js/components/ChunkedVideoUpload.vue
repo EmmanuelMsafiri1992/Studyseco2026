@@ -398,9 +398,10 @@ const uploadChunk = async (file, chunkIndex) => {
     const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
 
     const formData = new FormData()
-    formData.append('chunk', chunkFile, `chunk_${chunkIndex}`)
-    formData.append('chunkNumber', String(chunkIndex))
-    formData.append('totalChunks', String(totalChunks.value))
+    // Append the chunk file - use the blob directly, Laravel should handle it
+    formData.append('chunk', chunkBlob, `chunk_${chunkIndex}.bin`)
+    formData.append('chunkNumber', chunkIndex.toString())
+    formData.append('totalChunks', totalChunks.value.toString())
 
     const response = await fetch(`/api/upload/${uploadId.value}/chunk`, {
         method: 'POST',
@@ -413,10 +414,20 @@ const uploadChunk = async (file, chunkIndex) => {
     })
 
     if (!response.ok) {
+        // Try to get error details from response
+        let errorDetail = ''
+        try {
+            const errorData = await response.json()
+            errorDetail = errorData.error || errorData.message || JSON.stringify(errorData)
+            console.error('Chunk upload error response:', errorData)
+        } catch (e) {
+            errorDetail = await response.text()
+        }
+
         if (response.status === 401 || response.status === 419) {
             throw new Error('Session expired. Please refresh the page.')
         }
-        throw new Error(`Chunk ${chunkIndex} upload failed: ${response.status}`)
+        throw new Error(`Chunk ${chunkIndex} upload failed: ${response.status} - ${errorDetail}`)
     }
 
     const data = await response.json()

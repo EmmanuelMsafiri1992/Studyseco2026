@@ -52,10 +52,14 @@ class ChunkedUploadController extends Controller
      */
     public function uploadChunk(Request $request, $uploadId)
     {
-        $request->validate([
-            'chunk' => 'required|file',
-            'chunkNumber' => 'required|integer',
-            'totalChunks' => 'required|integer',
+        // Debug logging
+        \Log::info('Chunk upload request', [
+            'uploadId' => $uploadId,
+            'hasFile' => $request->hasFile('chunk'),
+            'chunkNumber' => $request->input('chunkNumber'),
+            'totalChunks' => $request->input('totalChunks'),
+            'allFiles' => array_keys($request->allFiles()),
+            'allInput' => array_keys($request->all()),
         ]);
 
         $tempDir = "temp/uploads/{$uploadId}";
@@ -66,10 +70,39 @@ class ChunkedUploadController extends Controller
             return response()->json(['success' => false, 'error' => 'Upload session not found'], 404);
         }
 
-        $chunkNumber = $request->chunkNumber;
+        $chunkNumber = $request->input('chunkNumber', 0);
+        $totalChunksInput = $request->input('totalChunks', 1);
+
+        // Try multiple ways to get the chunk file
+        $chunkFile = $request->file('chunk');
+
+        if (!$chunkFile) {
+            // Try getting it from allFiles
+            $allFiles = $request->allFiles();
+            if (!empty($allFiles)) {
+                $chunkFile = reset($allFiles);
+            }
+        }
+
+        if (!$chunkFile) {
+            \Log::error('No chunk file found', [
+                'files' => $request->allFiles(),
+                'input_keys' => array_keys($request->all()),
+                'content_type' => $request->header('Content-Type'),
+            ]);
+            return response()->json([
+                'success' => false,
+                'error' => 'No chunk file received',
+                'debug' => [
+                    'hasFile' => $request->hasFile('chunk'),
+                    'allFilesKeys' => array_keys($request->allFiles()),
+                    'allInputKeys' => array_keys($request->all()),
+                ]
+            ], 422);
+        }
 
         // Store chunk file
-        Storage::disk('public')->putFileAs($tempDir, $request->file('chunk'), "chunk_{$chunkNumber}");
+        Storage::disk('public')->putFileAs($tempDir, $chunkFile, "chunk_{$chunkNumber}");
 
         // Count actual chunk files instead of relying on metadata (avoids race condition)
         $chunkFiles = Storage::disk('public')->files($tempDir);
