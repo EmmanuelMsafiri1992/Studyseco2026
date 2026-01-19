@@ -515,36 +515,64 @@ onMounted(() => {
                     </div>
 
                     <!-- Video Player -->
-                    <div class="flex-1 bg-slate-800 relative">
-                        <div class="w-full h-full flex items-center justify-center">
-                            <div class="text-center text-white px-4">
-                                <div class="text-6xl text-white/20 mb-4">{{ subject.name.charAt(0) }}</div>
-                                <h3 class="text-2xl font-medium mb-2 text-white/80">Topic 1</h3>
-                                <h2 class="text-4xl font-bold mb-8">Lesson Introduction</h2>
-                                
-                                <!-- Video Controls Mockup -->
-                                <div class="mt-8 flex items-center justify-center space-x-4">
-                                    <button class="w-14 h-14 bg-white/20 rounded-full flex items-center justify-center hover:bg-white/30 transition-colors">
-                                        <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                    <div class="flex-1 bg-slate-800 relative overflow-hidden">
+                        <div class="absolute inset-0 flex items-center justify-center p-8">
+                            <div class="text-center text-white w-full max-w-2xl">
+                                <!-- Subject Initial -->
+                                <div class="text-6xl md:text-8xl text-white/20 mb-6">{{ subject.name.charAt(0) }}</div>
+
+                                <!-- Topic & Lesson Title -->
+                                <h3 class="text-xl md:text-2xl font-medium mb-2 text-white/80">
+                                    {{ selectedLesson?.topic?.name || 'Topic 1' }}
+                                </h3>
+                                <h2 class="text-2xl md:text-4xl font-bold mb-8">
+                                    {{ selectedLesson?.title || 'Select a Lesson' }}
+                                </h2>
+
+                                <!-- Play Button -->
+                                <div class="flex items-center justify-center mb-8">
+                                    <button class="w-16 h-16 md:w-20 md:h-20 bg-white/20 rounded-full flex items-center justify-center hover:bg-white/30 transition-all duration-200 hover:scale-110">
+                                        <svg class="w-8 h-8 md:w-10 md:h-10 ml-1" fill="currentColor" viewBox="0 0 24 24">
                                             <path d="M8 5v14l11-7z"/>
                                         </svg>
                                     </button>
                                 </div>
-                                
-                                <div class="mt-6 flex items-center justify-between max-w-lg mx-auto">
-                                    <span class="text-sm text-white/80">36:08</span>
-                                    <div class="flex-1 mx-4 h-1 bg-white/20 rounded-full">
-                                        <div class="h-full bg-white/70 rounded-full" style="width: 35%"></div>
+
+                                <!-- Video Progress Bar -->
+                                <div class="flex items-center justify-center space-x-4 max-w-md mx-auto px-4">
+                                    <span class="text-sm text-white/80 whitespace-nowrap">0:00</span>
+                                    <div class="flex-1 h-2 bg-white/20 rounded-full cursor-pointer hover:h-3 transition-all duration-200">
+                                        <div class="h-full bg-indigo-500 rounded-full transition-all duration-200" style="width: 0%"></div>
                                     </div>
-                                    <div class="flex space-x-1">
-                                        <div class="w-2 h-2 bg-white/60 rounded-sm"></div>
-                                        <div class="w-2 h-2 bg-white/60 rounded-sm"></div>
-                                        <div class="w-2 h-2 bg-white/60 rounded-sm"></div>
-                                        <div class="w-2 h-2 bg-white/60 rounded-sm"></div>
-                                        <div class="w-2 h-2 bg-white/60 rounded-sm"></div>
-                                        <div class="w-2 h-2 bg-white/60 rounded-sm"></div>
-                                    </div>
+                                    <span class="text-sm text-white/80 whitespace-nowrap">
+                                        {{ selectedLesson?.formatted_duration || '--:--' }}
+                                    </span>
                                 </div>
+
+                                <!-- Volume & Settings Controls -->
+                                <div class="flex items-center justify-center space-x-4 mt-6">
+                                    <button class="p-2 text-white/60 hover:text-white transition-colors">
+                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"></path>
+                                        </svg>
+                                    </button>
+                                    <button class="p-2 text-white/60 hover:text-white transition-colors">
+                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                        </svg>
+                                    </button>
+                                    <button class="p-2 text-white/60 hover:text-white transition-colors">
+                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path>
+                                        </svg>
+                                    </button>
+                                </div>
+
+                                <!-- No video selected message -->
+                                <p v-if="!selectedLesson" class="text-white/50 text-sm mt-6">
+                                    Click on a lesson from the sidebar to start watching
+                                </p>
                             </div>
                         </div>
                     </div>

@@ -173,7 +173,6 @@
 import { ref, computed, onUnmounted } from 'vue'
 
 const props = defineProps({
-    onUploadComplete: Function,
     maxFileSize: {
         type: Number,
         default: 1024 * 1024 * 1024 // 1GB
@@ -183,6 +182,8 @@ const props = defineProps({
         default: 1024 * 1024 * 2 // 2MB chunks
     }
 })
+
+const emit = defineEmits(['upload-success', 'upload-error', 'cancel'])
 
 // Reactive data
 const selectedFile = ref(null)
@@ -331,7 +332,7 @@ const startUpload = async () => {
     try {
         isCompressing.value = enableCompression.value
         compressionProgress.value = 0
-        
+
         // Compress video if enabled
         let fileToUpload = selectedFile.value
         if (enableCompression.value) {
@@ -343,7 +344,7 @@ const startUpload = async () => {
                 fileToUpload = selectedFile.value
             }
         }
-        
+
         isCompressing.value = false
         isUploading.value = true
         uploadStartTime.value = Date.now()
@@ -352,11 +353,12 @@ const startUpload = async () => {
 
         // Initialize upload
         await initiateChunkedUpload(fileToUpload)
-        
+
     } catch (err) {
         error.value = err.message
         isUploading.value = false
         isCompressing.value = false
+        emit('upload-error', err.message)
     }
 }
 
@@ -470,16 +472,15 @@ const finalizeUpload = async () => {
     
     isUploading.value = false
     uploadComplete.value = true
-    
-    // Notify parent component
-    if (props.onUploadComplete) {
-        props.onUploadComplete({
-            filePath: data.filePath,
-            fileName: selectedFile.value.name,
-            fileSize: data.fileSize,
-            duration: data.duration
-        })
-    }
+
+    // Notify parent component via emit
+    emit('upload-success', {
+        filePath: data.filePath,
+        fileName: selectedFile.value.name,
+        fileSize: data.fileSize,
+        duration: data.duration,
+        storageDisk: data.storageDisk || 'public'
+    })
 }
 
 const cancelUpload = async () => {
@@ -495,8 +496,9 @@ const cancelUpload = async () => {
             console.error('Cancel upload error:', err)
         }
     }
-    
+
     reset()
+    emit('cancel')
 }
 
 const retry = () => {
