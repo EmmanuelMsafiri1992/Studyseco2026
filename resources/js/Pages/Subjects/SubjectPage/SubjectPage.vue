@@ -254,7 +254,8 @@ const addLesson = async () => {
         }
     } catch (error) {
         console.error('Error adding lesson:', error);
-        alert('Error adding lesson. Please try again.');
+        const errorMsg = error.response?.data?.error || error.response?.data?.errors || error.message || 'Unknown error';
+        alert('Error adding lesson: ' + (typeof errorMsg === 'object' ? JSON.stringify(errorMsg) : errorMsg));
     } finally {
         isUploading.value = false;
         uploadProgress.value = 0;

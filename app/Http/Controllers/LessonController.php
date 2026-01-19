@@ -15,78 +15,98 @@ class LessonController extends Controller
 {
     public function store(Request $request)
     {
-        $validated = $request->validate([
-            'topic_id' => 'required|exists:topics,id',
-            'title' => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'notes' => 'nullable|string',
-            'video' => 'nullable|file|mimes:mp4,mov,avi,wmv,mkv|max:1048576', // 1GB max for regular uploads
-            'video_path' => 'nullable|string', // For chunked uploads
-            'video_filename' => 'nullable|string', // For chunked uploads
-            'duration_minutes' => 'nullable|integer|min:1', // For chunked uploads
-            'order_index' => 'nullable|integer|min:0',
-        ]);
+        try {
+            $validated = $request->validate([
+                'topic_id' => 'required|exists:topics,id',
+                'title' => 'required|string|max:255',
+                'description' => 'nullable|string',
+                'notes' => 'nullable|string',
+                'video' => 'nullable|file|mimes:mp4,mov,avi,wmv,mkv|max:1048576', // 1GB max for regular uploads
+                'video_path' => 'nullable|string', // For chunked uploads
+                'video_filename' => 'nullable|string', // For chunked uploads
+                'duration_minutes' => 'nullable|integer|min:1', // For chunked uploads
+                'order_index' => 'nullable|integer|min:0',
+            ]);
 
-        if (!isset($validated['order_index'])) {
-            $validated['order_index'] = Lesson::where('topic_id', $validated['topic_id'])->count();
-        }
-
-        $lesson = new Lesson($validated);
-
-        // Initialize S3 storage service
-        $storageService = new CloudStorageService();
-
-        // Handle traditional file upload
-        if ($request->hasFile('video')) {
-            $video = $request->file('video');
-            $filename = Str::uuid() . '_' . $video->getClientOriginalName();
-
-            // Use S3 if enabled, otherwise use public disk
-            if ($storageService->isEnabled()) {
-                $videoPath = $storageService->store('lessons/videos', $video, $filename);
-                $lesson->storage_disk = 's3';
-            } else {
-                $videoPath = $video->storeAs('lessons/videos', $filename, 'public');
-                $lesson->storage_disk = 'public';
+            if (!isset($validated['order_index'])) {
+                $validated['order_index'] = Lesson::where('topic_id', $validated['topic_id'])->count();
             }
 
-            $lesson->video_path = $videoPath;
-            $lesson->video_filename = $video->getClientOriginalName();
+            $lesson = new Lesson($validated);
 
-            // Try to get video duration (only for local storage)
-            if (!$storageService->isEnabled()) {
-                try {
-                    $fullPath = storage_path('app/public/' . $videoPath);
-                    if (class_exists('getID3')) {
-                        $getID3 = new getID3();
-                        $fileInfo = $getID3->analyze($fullPath);
-                        if (isset($fileInfo['playtime_seconds'])) {
-                            $lesson->duration_minutes = ceil($fileInfo['playtime_seconds'] / 60);
+            // Initialize S3 storage service
+            $storageService = new CloudStorageService();
+
+            // Handle traditional file upload
+            if ($request->hasFile('video')) {
+                $video = $request->file('video');
+                $filename = Str::uuid() . '_' . $video->getClientOriginalName();
+
+                // Use S3 if enabled, otherwise use public disk
+                if ($storageService->isEnabled()) {
+                    $videoPath = $storageService->store('lessons/videos', $video, $filename);
+                    $lesson->storage_disk = 's3';
+                } else {
+                    $videoPath = $video->storeAs('lessons/videos', $filename, 'public');
+                    $lesson->storage_disk = 'public';
+                }
+
+                $lesson->video_path = $videoPath;
+                $lesson->video_filename = $video->getClientOriginalName();
+
+                // Try to get video duration (only for local storage)
+                if (!$storageService->isEnabled()) {
+                    try {
+                        $fullPath = storage_path('app/public/' . $videoPath);
+                        if (class_exists('getID3')) {
+                            $getID3 = new getID3();
+                            $fileInfo = $getID3->analyze($fullPath);
+                            if (isset($fileInfo['playtime_seconds'])) {
+                                $lesson->duration_minutes = ceil($fileInfo['playtime_seconds'] / 60);
+                            }
                         }
+                    } catch (\Exception $e) {
+                        // Continue without duration if there's an error
                     }
-                } catch (\Exception $e) {
-                    // Continue without duration if there's an error
                 }
             }
-        }
-        // Handle chunked upload (video already processed and stored)
-        elseif ($request->has('video_path')) {
-            $lesson->video_path = $validated['video_path'];
-            $lesson->video_filename = $validated['video_filename'] ?? 'uploaded_video.mp4';
-            $lesson->storage_disk = $request->input('storage_disk', 'public');
+            // Handle chunked upload (video already processed and stored)
+            elseif ($request->has('video_path')) {
+                $lesson->video_path = $validated['video_path'];
+                $lesson->video_filename = $validated['video_filename'] ?? 'uploaded_video.mp4';
+                $lesson->storage_disk = $request->input('storage_disk', 'public');
 
-            if (isset($validated['duration_minutes'])) {
-                $lesson->duration_minutes = $validated['duration_minutes'];
+                if (isset($validated['duration_minutes'])) {
+                    $lesson->duration_minutes = $validated['duration_minutes'];
+                }
             }
+
+            $lesson->save();
+
+            return response()->json([
+                'success' => true,
+                'lesson' => $lesson,
+                'message' => 'Lesson created successfully!'
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Validation failed',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            \Log::error('Lesson store error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'request' => $request->all(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ], 500);
         }
-
-        $lesson->save();
-
-        return response()->json([
-            'success' => true,
-            'lesson' => $lesson,
-            'message' => 'Lesson created successfully!'
-        ]);
     }
 
     public function show(Lesson $lesson)
