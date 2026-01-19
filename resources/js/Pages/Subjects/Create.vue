@@ -1,6 +1,6 @@
 <script setup>
 import { Head, Link, useForm } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import DashboardLayout from '@/Layouts/DashboardLayout.vue';
 
 const props = defineProps({
@@ -22,6 +22,39 @@ const form = useForm({
 
 const coverImageInput = ref(null);
 const photoPreview = ref(null);
+const codeManuallyEdited = ref(false);
+
+// Auto-generate subject code from name
+const generateSubjectCode = (name) => {
+    if (!name || name.trim() === '') return '';
+
+    const words = name.trim().split(/\s+/);
+    let code = '';
+
+    if (words.length === 1) {
+        // Single word: take first 4 letters
+        code = words[0].substring(0, 4).toUpperCase();
+    } else {
+        // Multiple words: take first letter of each word (up to 4)
+        code = words.slice(0, 4).map(word => word.charAt(0)).join('').toUpperCase();
+    }
+
+    // Add random 3-digit number
+    const randomNum = Math.floor(100 + Math.random() * 900);
+    return code + randomNum;
+};
+
+// Watch for name changes and auto-generate code
+watch(() => form.name, (newName) => {
+    if (!codeManuallyEdited.value) {
+        form.code = generateSubjectCode(newName);
+    }
+});
+
+// Track if user manually edits the code
+const onCodeInput = () => {
+    codeManuallyEdited.value = true;
+};
 
 const selectNewPhoto = () => {
     coverImageInput.value.click();
@@ -115,10 +148,14 @@ const departmentOptions = props.departments && props.departments.length > 0 ? pr
                         </div>
                         
                         <div>
-                            <label class="block text-sm font-medium text-slate-700 mb-2">Subject Code*</label>
-                            <input v-model="form.code" type="text" required 
+                            <label class="block text-sm font-medium text-slate-700 mb-2">
+                                Subject Code*
+                                <span class="text-xs text-slate-400 font-normal ml-2">(Auto-generated)</span>
+                            </label>
+                            <input v-model="form.code" type="text" required @input="onCodeInput"
                                    class="w-full bg-slate-100/70 px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-white transition-all duration-200"
                                    placeholder="e.g. MATH101, PHYS102">
+                            <p class="mt-1 text-xs text-slate-500">Code is auto-generated from subject name. You can edit it if needed.</p>
                             <div v-if="form.errors.code" class="mt-1 text-sm text-red-600">{{ form.errors.code }}</div>
                         </div>
 
