@@ -477,24 +477,10 @@ onMounted(() => {
                                                             ]">
                                                                 {{ (topic.order_index + 1 || 1) }}.{{ (lesson.order_index + 1 || 1) }} {{ lesson.title }}
                                                             </p>
-                                                            <!-- Draft Badge + Publish Button for unpublished lessons -->
-                                                            <template v-if="canManageContent">
-                                                                <span v-if="!lesson.is_published" class="px-1.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-700 rounded">
-                                                                    Draft
-                                                                </span>
-                                                                <button
-                                                                    @click="toggleLessonPublish(lesson, $event)"
-                                                                    :class="[
-                                                                        'px-1.5 py-0.5 text-xs font-medium rounded transition-colors',
-                                                                        lesson.is_published
-                                                                            ? 'bg-green-100 text-green-700 hover:bg-red-100 hover:text-red-700'
-                                                                            : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'
-                                                                    ]"
-                                                                    :title="lesson.is_published ? 'Click to unpublish' : 'Click to publish'"
-                                                                >
-                                                                    {{ lesson.is_published ? 'Published' : 'Publish' }}
-                                                                </button>
-                                                            </template>
+                                                            <!-- Draft Badge for unpublished lessons -->
+                                                            <span v-if="!lesson.is_published && canManageContent" class="px-2 py-0.5 text-xs font-semibold bg-amber-100 text-amber-700 rounded-full">
+                                                                DRAFT
+                                                            </span>
                                                         </div>
                                                         <div class="flex items-center space-x-2 mt-1">
                                                             <span v-if="getLessonTypeIcon(lesson) === 'video'" class="text-xs text-slate-500">
@@ -509,14 +495,31 @@ onMounted(() => {
                                                         </div>
                                                     </div>
 
-                                                    <!-- Completion Status -->
+                                                    <!-- Publish Button for Admins / Completion Status for Students -->
                                                     <div class="flex-shrink-0 ml-2">
-                                                        <div v-if="getLessonProgress(lesson) === 100" class="w-5 h-5 text-green-500">
-                                                            <svg fill="currentColor" viewBox="0 0 20 20">
-                                                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
-                                                            </svg>
-                                                        </div>
-                                                        <div v-else class="w-5 h-5 border-2 border-slate-300 rounded-full"></div>
+                                                        <!-- Admin: Show Publish/Unpublish Button -->
+                                                        <button
+                                                            v-if="canManageContent"
+                                                            @click="toggleLessonPublish(lesson, $event)"
+                                                            :class="[
+                                                                'px-2 py-1 text-xs font-semibold rounded-lg transition-all duration-200 shadow-sm',
+                                                                lesson.is_published
+                                                                    ? 'bg-green-500 text-white hover:bg-green-600'
+                                                                    : 'bg-indigo-500 text-white hover:bg-indigo-600 animate-pulse'
+                                                            ]"
+                                                            :title="lesson.is_published ? 'Click to unpublish' : 'Click to publish this lesson'"
+                                                        >
+                                                            {{ lesson.is_published ? '✓ Live' : 'Publish' }}
+                                                        </button>
+                                                        <!-- Student: Show Completion Status -->
+                                                        <template v-else>
+                                                            <div v-if="getLessonProgress(lesson) === 100" class="w-5 h-5 text-green-500">
+                                                                <svg fill="currentColor" viewBox="0 0 20 20">
+                                                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                                                                </svg>
+                                                            </div>
+                                                            <div v-else class="w-5 h-5 border-2 border-slate-300 rounded-full"></div>
+                                                        </template>
                                                     </div>
                                                 </div>
                                             </div>
