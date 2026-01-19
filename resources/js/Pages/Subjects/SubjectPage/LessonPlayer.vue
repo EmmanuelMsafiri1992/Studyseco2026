@@ -510,17 +510,18 @@ onMounted(() => {
                 <!-- Video Player -->
                 <div class="flex-1 bg-black relative">
                     <div class="w-full h-full flex items-center justify-center">
-                        <video 
+                        <video
                             v-if="lesson.video_url"
                             ref="videoPlayer"
                             :src="lesson.video_url"
-                            class="w-full h-full object-contain"
+                            class="w-full h-full object-contain video-player-hd"
                             :poster="lesson.thumbnail_url"
                             playsinline
-                            preload="metadata"
+                            preload="auto"
                             controlslist="nodownload"
                             disablepictureinpicture="false"
                             webkit-playsinline
+                            x-webkit-airplay="allow"
                         >
                             <source :src="lesson.video_url" type="video/mp4">
                             <source :src="lesson.video_url" type="video/webm">
@@ -757,10 +758,34 @@ onMounted(() => {
             class="fixed inset-0 bg-black/50 z-30 lg:hidden"
         ></div>
         
-        <div 
-            v-if="isMobile && showAIChat" 
-            @click="toggleAIChat" 
+        <div
+            v-if="isMobile && showAIChat"
+            @click="toggleAIChat"
             class="fixed inset-0 bg-black/50 z-30 lg:hidden"
         ></div>
     </div>
 </template>
+
+<style scoped>
+/* Ensure video renders at maximum quality */
+.video-player-hd {
+    image-rendering: high-quality;
+    image-rendering: -webkit-optimize-contrast;
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+    transform: translateZ(0);
+}
+
+/* Prevent quality degradation on fullscreen */
+video:fullscreen {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+/* Ensure crisp rendering */
+video {
+    -webkit-transform: translate3d(0, 0, 0);
+    transform: translate3d(0, 0, 0);
+}
+</style>
