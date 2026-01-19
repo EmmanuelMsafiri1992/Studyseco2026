@@ -100,8 +100,9 @@ const getLessonTypeIcon = (lesson) => {
 };
 
 const getLessonProgress = (lesson) => {
-    // This would come from actual progress tracking
-    return Math.random() > 0.5 ? 100 : 0;
+    // TODO: Implement actual progress tracking from backend
+    // For now, return 0 (not completed) to avoid flickering
+    return 0;
 };
 
 const toggleAIChat = () => {

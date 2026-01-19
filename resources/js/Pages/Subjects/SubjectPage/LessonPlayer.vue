@@ -153,8 +153,9 @@ const getLessonTypeIcon = (lessonItem) => {
 };
 
 const getLessonProgress = (lessonItem) => {
-    // This would come from actual progress tracking
-    return lessonItem.id === props.lesson.id ? 100 : Math.random() > 0.5 ? 100 : 0;
+    // Mark current lesson as in progress, others as not completed
+    // TODO: Implement actual progress tracking from backend
+    return lessonItem.id === props.lesson.id ? 100 : 0;
 };
 
 const toggleAIChat = () => {

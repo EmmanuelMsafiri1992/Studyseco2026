@@ -119,7 +119,7 @@ class LessonController extends Controller
     {
         $lesson->load([
             'topic.subject.topics.lessons' => function ($query) {
-                $query->where('is_published', true)->orderBy('order_index');
+                $query->where('is_published', true)->orderBy('order_index', 'asc')->orderBy('id', 'asc');
             }
         ]);
 
@@ -127,10 +127,10 @@ class LessonController extends Controller
         $subject = $lesson->topic->subject;
         $subject->load([
             'topics' => function ($query) {
-                $query->where('is_active', true)->orderBy('order_index');
+                $query->where('is_active', true)->orderBy('order_index', 'asc');
             },
             'topics.lessons' => function ($query) {
-                $query->where('is_published', true)->orderBy('order_index');
+                $query->where('is_published', true)->orderBy('order_index', 'asc')->orderBy('id', 'asc');
             }
         ]);
 

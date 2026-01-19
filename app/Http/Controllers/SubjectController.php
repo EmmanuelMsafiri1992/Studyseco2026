@@ -112,13 +112,13 @@ class SubjectController extends Controller
 
         $subject->load([
             'topics' => function ($query) {
-                $query->where('is_active', true)->orderBy('order_index');
+                $query->where('is_active', true)->orderBy('order_index', 'asc');
             },
             'topics.lessons' => function ($query) use ($isAdmin) {
                 if (!$isAdmin) {
                     $query->where('is_published', true);
                 }
-                $query->orderBy('order_index');
+                $query->orderBy('order_index', 'asc')->orderBy('id', 'asc');
             }
         ]);
 
