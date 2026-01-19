@@ -64,67 +64,57 @@ class ChunkedUploadController extends Controller
             $chunkNumber = $request->input('chunkNumber', 0);
             $totalChunksInput = $request->input('totalChunks', 1);
 
-            // Get chunk content - try multiple methods
+            // Get chunk content - use $_FILES directly as most reliable method
             $chunkContent = null;
             $chunkSize = 0;
 
-            // Method 1: Try standard file upload
-            if ($request->hasFile('chunk')) {
-                $chunkFile = $request->file('chunk');
-                $chunkContent = file_get_contents($chunkFile->getRealPath());
-                $chunkSize = strlen($chunkContent);
-                \Log::info("Chunk {$chunkNumber}: Got content via hasFile", ['size' => $chunkSize]);
+            // Method 1: Use $_FILES directly (most reliable)
+            if (isset($_FILES['chunk']) && isset($_FILES['chunk']['tmp_name'])) {
+                $tmpName = $_FILES['chunk']['tmp_name'];
+                if (is_string($tmpName) && is_uploaded_file($tmpName) && is_file($tmpName)) {
+                    $chunkContent = file_get_contents($tmpName);
+                    $chunkSize = strlen($chunkContent);
+                    \Log::info("Chunk {$chunkNumber}: Got content via \$_FILES", ['size' => $chunkSize, 'tmpName' => $tmpName]);
+                }
             }
 
-            // Method 2: Try allFiles array
+            // Method 2: Try Laravel's file() method with path check
             if (!$chunkContent || $chunkSize === 0) {
-                $allFiles = $request->allFiles();
-                if (!empty($allFiles)) {
-                    $firstFile = reset($allFiles);
-                    if ($firstFile && method_exists($firstFile, 'getRealPath')) {
-                        $chunkContent = file_get_contents($firstFile->getRealPath());
+                if ($request->hasFile('chunk')) {
+                    $chunkFile = $request->file('chunk');
+                    $realPath = $chunkFile->getRealPath();
+                    // Only read if it's a file, not a directory
+                    if ($realPath && is_file($realPath)) {
+                        $chunkContent = file_get_contents($realPath);
                         $chunkSize = strlen($chunkContent);
-                        \Log::info("Chunk {$chunkNumber}: Got content via allFiles", ['size' => $chunkSize]);
+                        \Log::info("Chunk {$chunkNumber}: Got content via hasFile", ['size' => $chunkSize]);
                     }
                 }
             }
 
-            // Method 3: Try raw input stream (for blob uploads)
+            // Method 3: Try to get content directly from the UploadedFile
             if (!$chunkContent || $chunkSize === 0) {
-                // Check if chunk is in the files array under a nested structure
-                $files = $_FILES;
-                if (isset($files['chunk']) && isset($files['chunk']['tmp_name']) && is_uploaded_file($files['chunk']['tmp_name'])) {
-                    $chunkContent = file_get_contents($files['chunk']['tmp_name']);
-                    $chunkSize = strlen($chunkContent);
-                    \Log::info("Chunk {$chunkNumber}: Got content via \$_FILES", ['size' => $chunkSize]);
+                if ($request->hasFile('chunk')) {
+                    $chunkFile = $request->file('chunk');
+                    // Use get() method if available (reads file content)
+                    if (method_exists($chunkFile, 'get')) {
+                        $chunkContent = $chunkFile->get();
+                        $chunkSize = strlen($chunkContent);
+                        \Log::info("Chunk {$chunkNumber}: Got content via UploadedFile->get()", ['size' => $chunkSize]);
+                    }
                 }
             }
 
-            // Method 4: Check for nested array in allFiles
+            // Method 4: Read from php://input for raw uploads
             if (!$chunkContent || $chunkSize === 0) {
-                $allFiles = $request->allFiles();
-                foreach ($allFiles as $key => $file) {
-                    if (is_array($file)) {
-                        // Nested array structure
-                        foreach ($file as $nestedFile) {
-                            if ($nestedFile && method_exists($nestedFile, 'getRealPath')) {
-                                $realPath = $nestedFile->getRealPath();
-                                if ($realPath && file_exists($realPath)) {
-                                    $chunkContent = file_get_contents($realPath);
-                                    $chunkSize = strlen($chunkContent);
-                                    \Log::info("Chunk {$chunkNumber}: Got content via nested allFiles", ['size' => $chunkSize]);
-                                    break 2;
-                                }
-                            }
-                        }
-                    } elseif ($file && method_exists($file, 'getRealPath')) {
-                        $realPath = $file->getRealPath();
-                        if ($realPath && file_exists($realPath)) {
-                            $chunkContent = file_get_contents($realPath);
-                            $chunkSize = strlen($chunkContent);
-                            \Log::info("Chunk {$chunkNumber}: Got content via direct allFiles iteration", ['size' => $chunkSize]);
-                            break;
-                        }
+                $rawInput = file_get_contents('php://input');
+                if ($rawInput && strlen($rawInput) > 0) {
+                    // Check if it's multipart - if so, we need to parse it
+                    $contentType = $request->header('Content-Type', '');
+                    if (strpos($contentType, 'multipart/form-data') === false) {
+                        $chunkContent = $rawInput;
+                        $chunkSize = strlen($chunkContent);
+                        \Log::info("Chunk {$chunkNumber}: Got content via php://input", ['size' => $chunkSize]);
                     }
                 }
             }
@@ -132,8 +122,7 @@ class ChunkedUploadController extends Controller
             if (!$chunkContent || $chunkSize === 0) {
                 \Log::error("Chunk {$chunkNumber}: No content received", [
                     'hasFile' => $request->hasFile('chunk'),
-                    'allFilesKeys' => array_keys($request->allFiles()),
-                    'filesGlobal' => array_keys($_FILES ?? []),
+                    'filesGlobal' => $_FILES ?? [],
                     'contentType' => $request->header('Content-Type'),
                 ]);
                 return response()->json([
@@ -141,12 +130,12 @@ class ChunkedUploadController extends Controller
                     'error' => 'No chunk content received',
                     'debug' => [
                         'hasFile' => $request->hasFile('chunk'),
-                        'allFilesKeys' => array_keys($request->allFiles()),
+                        'filesKeys' => array_keys($_FILES ?? []),
                     ]
                 ], 422);
             }
 
-            // Store chunk content directly using put() instead of putFileAs()
+            // Store chunk content directly using put()
             $chunkPath = "{$tempDir}/chunk_{$chunkNumber}";
             Storage::disk('public')->put($chunkPath, $chunkContent);
 
