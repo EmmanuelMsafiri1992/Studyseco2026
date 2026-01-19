@@ -182,6 +182,36 @@ const cancelAddTopic = () => {
     showAddTopicForm.value = false;
 };
 
+// Delete Topic
+const deleteTopic = async (topic, event) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const lessonCount = topic.lessons?.length || 0;
+    const warningMsg = lessonCount > 0
+        ? `Are you sure you want to delete "${topic.name}"? This will also delete ${lessonCount} lesson(s) and their videos. This cannot be undone.`
+        : `Are you sure you want to delete "${topic.name}"? This cannot be undone.`;
+
+    if (!confirm(warningMsg)) {
+        return;
+    }
+
+    try {
+        const response = await axios.delete(route('topics.destroy', topic.id));
+
+        if (response.data.success) {
+            // Remove topic from local state
+            const index = props.subject.topics.findIndex(t => t.id === topic.id);
+            if (index !== -1) {
+                props.subject.topics.splice(index, 1);
+            }
+        }
+    } catch (error) {
+        console.error('Error deleting topic:', error);
+        alert('Failed to delete topic. Please try again.');
+    }
+};
+
 // Admin Functions - Lesson Management
 const addLesson = async () => {
     if (isUploading.value) return;
@@ -526,31 +556,47 @@ onMounted(() => {
                     <template v-for="topic in (subject?.topics || [])" :key="topic.id">
                         <div class="border-b border-slate-200/50">
                             <!-- Module Header -->
-                            <button 
-                                @click="toggleModule(topic.id)"
-                                class="w-full p-4 text-left hover:bg-slate-100 transition-colors duration-200"
-                            >
-                                <div class="flex items-center justify-between">
+                            <div class="flex items-center justify-between p-4 hover:bg-slate-100 transition-colors duration-200">
+                                <button
+                                    @click="toggleModule(topic.id)"
+                                    class="flex-1 text-left"
+                                >
                                     <div class="flex items-center space-x-3">
                                         <div class="w-6 h-6 border-2 border-slate-300 rounded-full flex items-center justify-center">
                                             <div v-if="getLessonProgress(topic) === 100" class="w-3 h-3 bg-green-500 rounded-full"></div>
                                         </div>
                                         <div>
-                                            <h3 class="text-slate-800 font-medium">Topic {{ topic.order_index + 1 || 1 }}</h3>
-                                            <p class="text-xs text-slate-500">0/{{ topic.lessons?.length || 0 }}</p>
+                                            <h3 class="text-slate-800 font-medium">{{ topic.name || 'Topic ' + (topic.order_index + 1 || 1) }}</h3>
+                                            <p class="text-xs text-slate-500">{{ topic.lessons?.length || 0 }} lesson(s)</p>
                                         </div>
                                     </div>
-                                    <svg 
-                                        :class="[
-                                            'w-5 h-5 text-slate-400 transform transition-transform duration-200',
-                                            expandedModules.has(topic.id) ? 'rotate-90' : ''
-                                        ]" 
-                                        fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                                </button>
+                                <div class="flex items-center space-x-2">
+                                    <!-- Delete Topic Button (Admin only) -->
+                                    <button
+                                        v-if="canManageContent"
+                                        @click="deleteTopic(topic, $event)"
+                                        class="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                        title="Delete topic"
                                     >
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
-                                    </svg>
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                                        </svg>
+                                    </button>
+                                    <!-- Expand/Collapse Arrow -->
+                                    <button @click="toggleModule(topic.id)" class="p-1">
+                                        <svg
+                                            :class="[
+                                                'w-5 h-5 text-slate-400 transform transition-transform duration-200',
+                                                expandedModules.has(topic.id) ? 'rotate-90' : ''
+                                            ]"
+                                            fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                                        >
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                                        </svg>
+                                    </button>
                                 </div>
-                            </button>
+                            </div>
 
                             <!-- Module Lessons -->
                             <div 

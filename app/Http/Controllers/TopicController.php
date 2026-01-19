@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Topic;
 use App\Models\Subject;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 
 class TopicController extends Controller
@@ -60,6 +61,20 @@ class TopicController extends Controller
 
     public function destroy(Topic $topic)
     {
+        // Delete all lesson videos first
+        foreach ($topic->lessons as $lesson) {
+            if ($lesson->video_path) {
+                $disk = $lesson->storage_disk ?? 'public';
+                try {
+                    Storage::disk($disk)->delete($lesson->video_path);
+                } catch (\Exception $e) {
+                    // Continue even if video delete fails
+                    \Log::warning("Failed to delete video for lesson {$lesson->id}: " . $e->getMessage());
+                }
+            }
+        }
+
+        // Delete the topic (lessons will be cascade deleted by database)
         $topic->delete();
 
         return response()->json([
