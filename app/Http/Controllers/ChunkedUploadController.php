@@ -60,30 +60,26 @@ class ChunkedUploadController extends Controller
 
         $tempDir = "temp/uploads/{$uploadId}";
         $metadataPath = "{$tempDir}/metadata.json";
-        
+
         // Check if upload session exists
         if (!Storage::disk('public')->exists($metadataPath)) {
-            return response()->json(['error' => 'Upload session not found'], 404);
+            return response()->json(['success' => false, 'error' => 'Upload session not found'], 404);
         }
-        
-        $metadata = json_decode(Storage::disk('public')->get($metadataPath), true);
+
         $chunkNumber = $request->chunkNumber;
-        $chunkPath = "{$tempDir}/chunk_{$chunkNumber}";
-        
-        // Store chunk
+
+        // Store chunk file
         Storage::disk('public')->putFileAs($tempDir, $request->file('chunk'), "chunk_{$chunkNumber}");
-        
-        // Update metadata
-        if (!in_array($chunkNumber, $metadata['uploadedChunks'])) {
-            $metadata['uploadedChunks'][] = $chunkNumber;
-        }
-        
-        Storage::disk('public')->put($metadataPath, json_encode($metadata));
-        
-        $uploadedChunks = count($metadata['uploadedChunks']);
-        $totalChunks = $metadata['totalChunks'];
+
+        // Count actual chunk files instead of relying on metadata (avoids race condition)
+        $chunkFiles = Storage::disk('public')->files($tempDir);
+        $uploadedChunks = count(array_filter($chunkFiles, function($file) {
+            return str_contains($file, 'chunk_');
+        }));
+
+        $totalChunks = $request->totalChunks;
         $progress = ($uploadedChunks / $totalChunks) * 100;
-        
+
         return response()->json([
             'success' => true,
             'chunkNumber' => $chunkNumber,
@@ -103,14 +99,26 @@ class ChunkedUploadController extends Controller
         $metadataPath = "{$tempDir}/metadata.json";
 
         if (!Storage::disk('public')->exists($metadataPath)) {
-            return response()->json(['error' => 'Upload session not found'], 404);
+            return response()->json(['success' => false, 'error' => 'Upload session not found'], 404);
         }
 
         $metadata = json_decode(Storage::disk('public')->get($metadataPath), true);
 
+        // Count actual chunk files instead of metadata (more reliable)
+        $chunkFiles = Storage::disk('public')->files($tempDir);
+        $actualChunks = array_filter($chunkFiles, function($file) {
+            return str_contains($file, 'chunk_');
+        });
+        $uploadedChunkCount = count($actualChunks);
+
         // Check if all chunks are uploaded
-        if (count($metadata['uploadedChunks']) !== $metadata['totalChunks']) {
-            return response()->json(['error' => 'Not all chunks uploaded'], 400);
+        if ($uploadedChunkCount < $metadata['totalChunks']) {
+            return response()->json([
+                'success' => false,
+                'error' => "Not all chunks uploaded. Expected {$metadata['totalChunks']}, got {$uploadedChunkCount}",
+                'expected' => $metadata['totalChunks'],
+                'received' => $uploadedChunkCount,
+            ], 400);
         }
 
         // Initialize cloud storage service

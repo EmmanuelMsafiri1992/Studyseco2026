@@ -154,7 +154,7 @@ const props = defineProps({
     },
     chunkSize: {
         type: Number,
-        default: 1024 * 1024 * 2 // 2MB chunks
+        default: 1024 * 1024 * 5 // 5MB chunks (larger = fewer requests = more reliable)
     }
 })
 
@@ -375,34 +375,14 @@ const initiateChunkedUpload = async (file) => {
 }
 
 const uploadChunksConcurrent = async (file, totalChunksCount) => {
-    const concurrentUploads = 3
-    const chunks = []
-    
-    // Create chunk upload promises
+    // Upload chunks sequentially to avoid race conditions
     for (let i = 0; i < totalChunksCount; i++) {
-        chunks.push(() => uploadChunk(file, i))
+        await uploadChunk(file, i)
     }
-    
-    // Execute chunks with concurrency limit
-    let index = 0
-    const executing = new Set()
-    
-    while (index < chunks.length || executing.size > 0) {
-        while (executing.size < concurrentUploads && index < chunks.length) {
-            const promise = chunks[index++]().then(() => {
-                executing.delete(promise)
-            }).catch((err) => {
-                executing.delete(promise)
-                throw err
-            })
-            executing.add(promise)
-        }
-        
-        if (executing.size > 0) {
-            await Promise.race(executing)
-        }
-    }
-    
+
+    // Small delay to ensure all chunks are written to disk
+    await new Promise(resolve => setTimeout(resolve, 500))
+
     // Finalize upload
     await finalizeUpload()
 }
