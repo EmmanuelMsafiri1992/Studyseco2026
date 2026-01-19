@@ -658,6 +658,10 @@ Route::middleware('auth')->group(function () {
         Route::delete('lessons/{lesson}', [LessonController::class, 'destroy'])->name('lessons.destroy');
         Route::patch('lessons/{lesson}/publish', [LessonController::class, 'publish'])->name('lessons.publish');
         Route::patch('lessons/{lesson}/unpublish', [LessonController::class, 'unpublish'])->name('lessons.unpublish');
+
+        // Video Transcoding Routes
+        Route::get('lessons/{lesson}/transcoding-status', [LessonController::class, 'transcodingStatus'])->name('lessons.transcoding-status');
+        Route::post('lessons/{lesson}/start-transcoding', [LessonController::class, 'startTranscoding'])->name('lessons.start-transcoding');
     });
 
     // Fees Management Routes (Admin only)

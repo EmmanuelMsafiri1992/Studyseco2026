@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Lesson;
 use App\Models\Topic;
 use App\Services\CloudStorageService;
+use App\Jobs\TranscodeVideoJob;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Storage;
@@ -82,6 +83,11 @@ class LessonController extends Controller
             }
 
             $lesson->save();
+
+            // Dispatch transcoding job if video was uploaded and auto-transcoding is enabled
+            if ($lesson->video_path && config('transcoding.auto_transcode', true)) {
+                $this->dispatchTranscodingJob($lesson);
+            }
 
             return response()->json([
                 'success' => true,
@@ -207,7 +213,15 @@ class LessonController extends Controller
             $validated['storage_disk'] = $request->storage_disk ?? 'public';
         }
 
+        // Check if video was changed
+        $videoChanged = isset($validated['video_path']) && $validated['video_path'] !== $lesson->video_path;
+
         $lesson->update($validated);
+
+        // Dispatch transcoding job if video was changed and auto-transcoding is enabled
+        if ($videoChanged && config('transcoding.auto_transcode', true)) {
+            $this->dispatchTranscodingJob($lesson->fresh());
+        }
 
         return response()->json([
             'success' => true,
@@ -251,5 +265,74 @@ class LessonController extends Controller
             'lesson' => $lesson->fresh(),
             'message' => 'Lesson unpublished successfully!'
         ]);
+    }
+
+    /**
+     * Get the transcoding status for a lesson.
+     */
+    public function transcodingStatus(Lesson $lesson)
+    {
+        return response()->json([
+            'success' => true,
+            'lesson_id' => $lesson->id,
+            'transcoding' => $lesson->getTranscodingStatusDetails(),
+            'hls_url' => $lesson->hls_url,
+            'available_qualities' => $lesson->available_qualities,
+        ]);
+    }
+
+    /**
+     * Manually trigger transcoding for a lesson.
+     */
+    public function startTranscoding(Lesson $lesson)
+    {
+        if (!$lesson->video_path) {
+            return response()->json([
+                'success' => false,
+                'error' => 'No video file found for this lesson',
+            ], 400);
+        }
+
+        if (in_array($lesson->transcoding_status, ['pending', 'processing'])) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Transcoding is already in progress',
+            ], 400);
+        }
+
+        $this->dispatchTranscodingJob($lesson);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Transcoding job dispatched successfully',
+        ]);
+    }
+
+    /**
+     * Dispatch the transcoding job for a lesson.
+     */
+    protected function dispatchTranscodingJob(Lesson $lesson): void
+    {
+        // Store original video path before transcoding
+        if (!$lesson->original_video_path) {
+            $lesson->update([
+                'original_video_path' => $lesson->video_path,
+                'transcoding_status' => 'pending',
+                'transcoding_progress' => 0,
+            ]);
+        } else {
+            $lesson->update([
+                'transcoding_status' => 'pending',
+                'transcoding_progress' => 0,
+            ]);
+        }
+
+        // Delete existing quality records if re-transcoding
+        $lesson->videoQualities()->delete();
+
+        // Dispatch the job
+        TranscodeVideoJob::dispatch($lesson);
+
+        \Log::info('Transcoding job dispatched', ['lesson_id' => $lesson->id]);
     }
 }

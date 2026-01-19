@@ -1,12 +1,16 @@
 <script setup>
 import { Head, Link } from '@inertiajs/vue3';
-import { ref, computed, onMounted, nextTick } from 'vue';
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
+import Hls from 'hls.js';
 
 const props = defineProps({
     auth: Object,
     lesson: Object,
     subject: Object,
 });
+
+// HLS instance
+let hls = null;
 
 const user = props.auth?.user || { name: 'Guest', role: 'guest', profile_photo_url: null };
 const videoPlayer = ref(null);
@@ -22,6 +26,16 @@ const showSidebar = ref(true);
 const isMobile = ref(false);
 const buffered = ref(0);
 const expandedModules = ref(new Set());
+
+// HLS and Quality Selector State
+const currentQuality = ref('auto');
+const showQualityMenu = ref(false);
+const availableQualities = ref(props.lesson.available_qualities || []);
+const isHlsSupported = ref(false);
+const isTranscoding = ref(props.lesson.is_transcoding || false);
+const transcodingProgress = ref(props.lesson.transcoding_progress || 0);
+const transcodingStatus = ref(props.lesson.transcoding_status || 'none');
+let transcodingPollInterval = null;
 
 // AI Tutor Chat functionality
 const showAIChat = ref(true);
@@ -188,6 +202,161 @@ const generateAIResponse = (userMessage) => {
     return responses[Math.floor(Math.random() * responses.length)];
 };
 
+// HLS Functions
+const setupHls = () => {
+    if (!videoPlayer.value) return;
+
+    const hlsUrl = props.lesson.hls_url;
+    const videoUrl = props.lesson.video_url;
+
+    // Check if HLS is supported
+    isHlsSupported.value = Hls.isSupported();
+
+    // If HLS URL is available and HLS.js is supported
+    if (hlsUrl && isHlsSupported.value) {
+        // Destroy existing HLS instance
+        if (hls) {
+            hls.destroy();
+        }
+
+        hls = new Hls({
+            enableWorker: true,
+            lowLatencyMode: false,
+            backBufferLength: 90,
+        });
+
+        hls.loadSource(hlsUrl);
+        hls.attachMedia(videoPlayer.value);
+
+        hls.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
+            // Get available quality levels from HLS
+            const levels = hls.levels;
+            if (levels && levels.length > 0) {
+                availableQualities.value = levels.map((level, index) => ({
+                    quality: `${level.height}p`,
+                    width: level.width,
+                    height: level.height,
+                    bitrate: Math.round(level.bitrate / 1000),
+                    index: index,
+                }));
+            }
+            isLoading.value = false;
+        });
+
+        hls.on(Hls.Events.LEVEL_SWITCHED, (event, data) => {
+            const level = hls.levels[data.level];
+            if (level && currentQuality.value === 'auto') {
+                // Update UI to show current auto-selected quality
+            }
+        });
+
+        hls.on(Hls.Events.ERROR, (event, data) => {
+            if (data.fatal) {
+                switch (data.type) {
+                    case Hls.ErrorTypes.NETWORK_ERROR:
+                        console.error('HLS network error, trying to recover');
+                        hls.startLoad();
+                        break;
+                    case Hls.ErrorTypes.MEDIA_ERROR:
+                        console.error('HLS media error, trying to recover');
+                        hls.recoverMediaError();
+                        break;
+                    default:
+                        console.error('HLS fatal error, falling back to direct playback');
+                        destroyHls();
+                        // Fall back to direct video URL
+                        if (videoUrl) {
+                            videoPlayer.value.src = videoUrl;
+                        }
+                        break;
+                }
+            }
+        });
+    }
+    // Native HLS support (Safari, iOS)
+    else if (hlsUrl && videoPlayer.value.canPlayType('application/vnd.apple.mpegurl')) {
+        videoPlayer.value.src = hlsUrl;
+    }
+    // Fallback to direct video URL
+    else if (videoUrl) {
+        videoPlayer.value.src = videoUrl;
+    }
+};
+
+const destroyHls = () => {
+    if (hls) {
+        hls.destroy();
+        hls = null;
+    }
+};
+
+const setQuality = (quality) => {
+    currentQuality.value = quality;
+    showQualityMenu.value = false;
+
+    if (!hls) return;
+
+    if (quality === 'auto') {
+        hls.currentLevel = -1; // Auto quality selection
+    } else {
+        // Find the level index for the selected quality
+        const qualityItem = availableQualities.value.find(q => q.quality === quality);
+        if (qualityItem && qualityItem.index !== undefined) {
+            hls.currentLevel = qualityItem.index;
+        }
+    }
+};
+
+const getQualityLabel = (quality) => {
+    if (quality === 'auto') {
+        if (hls && hls.currentLevel >= 0 && hls.levels[hls.currentLevel]) {
+            return `Auto (${hls.levels[hls.currentLevel].height}p)`;
+        }
+        return 'Auto';
+    }
+    return quality;
+};
+
+const toggleQualityMenu = () => {
+    showQualityMenu.value = !showQualityMenu.value;
+};
+
+// Poll transcoding status
+const pollTranscodingStatus = async () => {
+    if (!isTranscoding.value) return;
+
+    try {
+        const response = await fetch(`/api/lessons/${props.lesson.id}/transcoding-status`);
+        if (response.ok) {
+            const data = await response.json();
+            transcodingStatus.value = data.transcoding.status;
+            transcodingProgress.value = data.transcoding.progress;
+            availableQualities.value = data.available_qualities || [];
+
+            // Stop polling if transcoding is complete or failed
+            if (data.transcoding.status === 'completed' || data.transcoding.status === 'failed') {
+                isTranscoding.value = false;
+                clearInterval(transcodingPollInterval);
+                transcodingPollInterval = null;
+
+                // Reinitialize HLS if transcoding completed
+                if (data.transcoding.status === 'completed' && data.hls_url) {
+                    props.lesson.hls_url = data.hls_url;
+                    setupHls();
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Error polling transcoding status:', error);
+    }
+};
+
+const startTranscodingPolling = () => {
+    if (isTranscoding.value && !transcodingPollInterval) {
+        transcodingPollInterval = setInterval(pollTranscodingStatus, 5000);
+    }
+};
+
 onMounted(() => {
     checkMobile();
     window.addEventListener('resize', checkMobile);
@@ -261,6 +430,14 @@ onMounted(() => {
 
         videoPlayer.value.addEventListener('mousemove', resetControlsTimeout);
         videoPlayer.value.addEventListener('click', togglePlay);
+
+        // Initialize HLS.js for adaptive streaming
+        setupHls();
+    }
+
+    // Start transcoding polling if video is being transcoded
+    if (isTranscoding.value) {
+        startTranscodingPolling();
     }
 
     // Keyboard shortcuts
@@ -288,6 +465,21 @@ onMounted(() => {
                 break;
         }
     });
+});
+
+// Cleanup on unmount
+onUnmounted(() => {
+    // Destroy HLS instance
+    destroyHls();
+
+    // Clear transcoding polling interval
+    if (transcodingPollInterval) {
+        clearInterval(transcodingPollInterval);
+        transcodingPollInterval = null;
+    }
+
+    // Remove event listeners
+    window.removeEventListener('resize', checkMobile);
 });
 </script>
 
@@ -509,11 +701,38 @@ onMounted(() => {
 
                 <!-- Video Player -->
                 <div class="flex-1 bg-black relative">
+                    <!-- Transcoding Progress Indicator -->
+                    <div
+                        v-if="isTranscoding"
+                        class="absolute top-0 left-0 right-0 bg-gradient-to-b from-black/80 to-transparent p-4 z-20"
+                    >
+                        <div class="flex items-center space-x-3 text-white">
+                            <svg class="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            <div class="flex-1">
+                                <div class="flex items-center justify-between text-sm">
+                                    <span>Processing video for adaptive streaming...</span>
+                                    <span>{{ transcodingProgress }}%</span>
+                                </div>
+                                <div class="mt-2 bg-white/20 rounded-full h-2">
+                                    <div
+                                        class="bg-blue-500 h-2 rounded-full transition-all duration-500"
+                                        :style="{ width: transcodingProgress + '%' }"
+                                    ></div>
+                                </div>
+                                <p class="text-xs text-white/60 mt-1">
+                                    Multiple quality options will be available once processing completes
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="w-full h-full flex items-center justify-center">
                         <video
-                            v-if="lesson.video_url"
+                            v-if="lesson.video_url || lesson.hls_url"
                             ref="videoPlayer"
-                            :src="lesson.video_url"
                             class="w-full h-full object-contain video-player-hd"
                             :poster="lesson.thumbnail_url"
                             playsinline
@@ -523,9 +742,6 @@ onMounted(() => {
                             webkit-playsinline
                             x-webkit-airplay="allow"
                         >
-                            <source :src="lesson.video_url" type="video/mp4">
-                            <source :src="lesson.video_url" type="video/webm">
-                            <source :src="lesson.video_url" type="video/x-matroska">
                             Your browser does not support the video tag.
                         </video>
 
@@ -604,12 +820,55 @@ onMounted(() => {
 
                                 <!-- Right Controls -->
                                 <div class="flex items-center space-x-2">
+                                    <!-- Quality Selector -->
+                                    <div v-if="availableQualities.length > 0" class="relative">
+                                        <button
+                                            @click="toggleQualityMenu"
+                                            class="px-2 py-1 text-xs bg-white/20 rounded hover:bg-white/30 transition-colors duration-200 flex items-center space-x-1"
+                                        >
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                            </svg>
+                                            <span>{{ getQualityLabel(currentQuality) }}</span>
+                                        </button>
+                                        <div
+                                            v-if="showQualityMenu"
+                                            class="absolute bottom-full right-0 mb-2 bg-black/90 rounded-lg p-2 min-w-[120px] z-50"
+                                        >
+                                            <div class="text-xs text-white/60 px-2 py-1 border-b border-white/20 mb-1">Quality</div>
+                                            <div class="flex flex-col space-y-1">
+                                                <button
+                                                    @click="setQuality('auto')"
+                                                    :class="[
+                                                        'px-2 py-1 text-xs rounded text-left',
+                                                        currentQuality === 'auto' ? 'bg-blue-500' : 'hover:bg-white/20'
+                                                    ]"
+                                                >
+                                                    Auto
+                                                </button>
+                                                <button
+                                                    v-for="quality in availableQualities"
+                                                    :key="quality.quality"
+                                                    @click="setQuality(quality.quality)"
+                                                    :class="[
+                                                        'px-2 py-1 text-xs rounded text-left flex justify-between items-center',
+                                                        currentQuality === quality.quality ? 'bg-blue-500' : 'hover:bg-white/20'
+                                                    ]"
+                                                >
+                                                    <span>{{ quality.quality }}</span>
+                                                    <span class="text-white/50 ml-2">{{ quality.bitrate }}k</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+
                                     <!-- Playback Speed -->
                                     <div class="relative group">
                                         <button class="px-2 py-1 text-xs bg-white/20 rounded hover:bg-white/30 transition-colors duration-200">
                                             {{ playbackRate }}x
                                         </button>
-                                        <div class="absolute bottom-full right-0 mb-2 bg-black/90 rounded-lg p-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                                        <div class="absolute bottom-full right-0 mb-2 bg-black/90 rounded-lg p-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-50">
                                             <div class="flex flex-col space-y-1">
                                                 <button @click="changePlaybackRate(0.5)" class="px-2 py-1 text-xs hover:bg-white/20 rounded">0.5x</button>
                                                 <button @click="changePlaybackRate(0.75)" class="px-2 py-1 text-xs hover:bg-white/20 rounded">0.75x</button>
@@ -632,7 +891,7 @@ onMounted(() => {
                         </div>
 
                         <!-- No Video State -->
-                        <div v-if="!lesson.video_url" class="absolute inset-0 flex items-center justify-center bg-black">
+                        <div v-if="!lesson.video_url && !lesson.hls_url" class="absolute inset-0 flex items-center justify-center bg-black">
                             <div class="text-center text-white px-4">
                                 <svg class="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
