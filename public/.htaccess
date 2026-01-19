@@ -27,3 +27,25 @@
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteRule ^ index.php [L]
 </IfModule>
+
+# Video streaming optimization - Enable byte-range requests for seeking
+<IfModule mod_headers.c>
+    <FilesMatch "\.(mp4|webm|mov|avi|mkv)$">
+        Header set Accept-Ranges bytes
+        Header set Cache-Control "public, max-age=31536000"
+    </FilesMatch>
+</IfModule>
+
+# Prevent video hotlinking (only allow from your domain)
+<IfModule mod_rewrite.c>
+    RewriteCond %{HTTP_REFERER} !^$
+    RewriteCond %{HTTP_REFERER} !^https?://(www\.)?studyseco\.com [NC]
+    RewriteCond %{HTTP_REFERER} !^https?://127\.0\.0\.1 [NC]
+    RewriteCond %{HTTP_REFERER} !^https?://localhost [NC]
+    RewriteRule \.(mp4|webm|mov)$ - [F,NC]
+</IfModule>
+
+# Enable GZIP compression for better performance
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css text/javascript application/javascript application/json
+</IfModule>
