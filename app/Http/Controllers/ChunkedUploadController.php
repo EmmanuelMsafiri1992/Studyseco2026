@@ -52,75 +52,142 @@ class ChunkedUploadController extends Controller
      */
     public function uploadChunk(Request $request, $uploadId)
     {
-        // Debug logging
-        \Log::info('Chunk upload request', [
-            'uploadId' => $uploadId,
-            'hasFile' => $request->hasFile('chunk'),
-            'chunkNumber' => $request->input('chunkNumber'),
-            'totalChunks' => $request->input('totalChunks'),
-            'allFiles' => array_keys($request->allFiles()),
-            'allInput' => array_keys($request->all()),
-        ]);
+        try {
+            $tempDir = "temp/uploads/{$uploadId}";
+            $metadataPath = "{$tempDir}/metadata.json";
 
-        $tempDir = "temp/uploads/{$uploadId}";
-        $metadataPath = "{$tempDir}/metadata.json";
-
-        // Check if upload session exists
-        if (!Storage::disk('public')->exists($metadataPath)) {
-            return response()->json(['success' => false, 'error' => 'Upload session not found'], 404);
-        }
-
-        $chunkNumber = $request->input('chunkNumber', 0);
-        $totalChunksInput = $request->input('totalChunks', 1);
-
-        // Try multiple ways to get the chunk file
-        $chunkFile = $request->file('chunk');
-
-        if (!$chunkFile) {
-            // Try getting it from allFiles
-            $allFiles = $request->allFiles();
-            if (!empty($allFiles)) {
-                $chunkFile = reset($allFiles);
+            // Check if upload session exists
+            if (!Storage::disk('public')->exists($metadataPath)) {
+                return response()->json(['success' => false, 'error' => 'Upload session not found'], 404);
             }
-        }
 
-        if (!$chunkFile) {
-            \Log::error('No chunk file found', [
-                'files' => $request->allFiles(),
-                'input_keys' => array_keys($request->all()),
-                'content_type' => $request->header('Content-Type'),
-            ]);
-            return response()->json([
-                'success' => false,
-                'error' => 'No chunk file received',
-                'debug' => [
+            $chunkNumber = $request->input('chunkNumber', 0);
+            $totalChunksInput = $request->input('totalChunks', 1);
+
+            // Get chunk content - try multiple methods
+            $chunkContent = null;
+            $chunkSize = 0;
+
+            // Method 1: Try standard file upload
+            if ($request->hasFile('chunk')) {
+                $chunkFile = $request->file('chunk');
+                $chunkContent = file_get_contents($chunkFile->getRealPath());
+                $chunkSize = strlen($chunkContent);
+                \Log::info("Chunk {$chunkNumber}: Got content via hasFile", ['size' => $chunkSize]);
+            }
+
+            // Method 2: Try allFiles array
+            if (!$chunkContent || $chunkSize === 0) {
+                $allFiles = $request->allFiles();
+                if (!empty($allFiles)) {
+                    $firstFile = reset($allFiles);
+                    if ($firstFile && method_exists($firstFile, 'getRealPath')) {
+                        $chunkContent = file_get_contents($firstFile->getRealPath());
+                        $chunkSize = strlen($chunkContent);
+                        \Log::info("Chunk {$chunkNumber}: Got content via allFiles", ['size' => $chunkSize]);
+                    }
+                }
+            }
+
+            // Method 3: Try raw input stream (for blob uploads)
+            if (!$chunkContent || $chunkSize === 0) {
+                // Check if chunk is in the files array under a nested structure
+                $files = $_FILES;
+                if (isset($files['chunk']) && isset($files['chunk']['tmp_name']) && is_uploaded_file($files['chunk']['tmp_name'])) {
+                    $chunkContent = file_get_contents($files['chunk']['tmp_name']);
+                    $chunkSize = strlen($chunkContent);
+                    \Log::info("Chunk {$chunkNumber}: Got content via \$_FILES", ['size' => $chunkSize]);
+                }
+            }
+
+            // Method 4: Check for nested array in allFiles
+            if (!$chunkContent || $chunkSize === 0) {
+                $allFiles = $request->allFiles();
+                foreach ($allFiles as $key => $file) {
+                    if (is_array($file)) {
+                        // Nested array structure
+                        foreach ($file as $nestedFile) {
+                            if ($nestedFile && method_exists($nestedFile, 'getRealPath')) {
+                                $realPath = $nestedFile->getRealPath();
+                                if ($realPath && file_exists($realPath)) {
+                                    $chunkContent = file_get_contents($realPath);
+                                    $chunkSize = strlen($chunkContent);
+                                    \Log::info("Chunk {$chunkNumber}: Got content via nested allFiles", ['size' => $chunkSize]);
+                                    break 2;
+                                }
+                            }
+                        }
+                    } elseif ($file && method_exists($file, 'getRealPath')) {
+                        $realPath = $file->getRealPath();
+                        if ($realPath && file_exists($realPath)) {
+                            $chunkContent = file_get_contents($realPath);
+                            $chunkSize = strlen($chunkContent);
+                            \Log::info("Chunk {$chunkNumber}: Got content via direct allFiles iteration", ['size' => $chunkSize]);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (!$chunkContent || $chunkSize === 0) {
+                \Log::error("Chunk {$chunkNumber}: No content received", [
                     'hasFile' => $request->hasFile('chunk'),
                     'allFilesKeys' => array_keys($request->allFiles()),
-                    'allInputKeys' => array_keys($request->all()),
-                ]
-            ], 422);
+                    'filesGlobal' => array_keys($_FILES ?? []),
+                    'contentType' => $request->header('Content-Type'),
+                ]);
+                return response()->json([
+                    'success' => false,
+                    'error' => 'No chunk content received',
+                    'debug' => [
+                        'hasFile' => $request->hasFile('chunk'),
+                        'allFilesKeys' => array_keys($request->allFiles()),
+                    ]
+                ], 422);
+            }
+
+            // Store chunk content directly using put() instead of putFileAs()
+            $chunkPath = "{$tempDir}/chunk_{$chunkNumber}";
+            Storage::disk('public')->put($chunkPath, $chunkContent);
+
+            // Verify the chunk was saved correctly
+            $savedSize = Storage::disk('public')->size($chunkPath);
+            \Log::info("Chunk {$chunkNumber}: Saved", ['originalSize' => $chunkSize, 'savedSize' => $savedSize]);
+
+            if ($savedSize !== $chunkSize) {
+                \Log::error("Chunk {$chunkNumber}: Size mismatch after save", ['expected' => $chunkSize, 'actual' => $savedSize]);
+            }
+
+            // Count actual chunk files
+            $chunkFiles = Storage::disk('public')->files($tempDir);
+            $uploadedChunks = count(array_filter($chunkFiles, function($file) {
+                return str_contains($file, 'chunk_');
+            }));
+
+            $totalChunks = (int) $request->input('totalChunks', 1);
+            $progress = ($uploadedChunks / $totalChunks) * 100;
+
+            return response()->json([
+                'success' => true,
+                'chunkNumber' => $chunkNumber,
+                'uploadedChunks' => $uploadedChunks,
+                'totalChunks' => $totalChunks,
+                'progress' => round($progress, 2),
+                'isComplete' => $uploadedChunks === $totalChunks,
+                'chunkSize' => $chunkSize,
+            ]);
+        } catch (\Exception $e) {
+            \Log::error("Chunk upload error: " . $e->getMessage(), [
+                'uploadId' => $uploadId,
+                'chunkNumber' => $request->input('chunkNumber'),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 500);
         }
-
-        // Store chunk file
-        Storage::disk('public')->putFileAs($tempDir, $chunkFile, "chunk_{$chunkNumber}");
-
-        // Count actual chunk files instead of relying on metadata (avoids race condition)
-        $chunkFiles = Storage::disk('public')->files($tempDir);
-        $uploadedChunks = count(array_filter($chunkFiles, function($file) {
-            return str_contains($file, 'chunk_');
-        }));
-
-        $totalChunks = $request->totalChunks;
-        $progress = ($uploadedChunks / $totalChunks) * 100;
-
-        return response()->json([
-            'success' => true,
-            'chunkNumber' => $chunkNumber,
-            'uploadedChunks' => $uploadedChunks,
-            'totalChunks' => $totalChunks,
-            'progress' => round($progress, 2),
-            'isComplete' => $uploadedChunks === $totalChunks,
-        ]);
     }
 
     /**
