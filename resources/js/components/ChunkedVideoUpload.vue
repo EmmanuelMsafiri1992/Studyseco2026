@@ -42,11 +42,7 @@
                         <p class="text-sm text-slate-500">{{ formatFileSize(selectedFile.size) }}</p>
                     </div>
                 </div>
-                <div class="flex space-x-2">
-                    <label class="flex items-center space-x-2">
-                        <input v-model="enableCompression" type="checkbox" class="rounded">
-                        <span class="text-sm text-slate-600">Compress (faster upload)</span>
-                    </label>
+                <div class="flex items-center space-x-2">
                     <button
                         @click="startUpload"
                         class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors duration-200"
@@ -60,27 +56,6 @@
                         Cancel
                     </button>
                 </div>
-            </div>
-        </div>
-
-        <!-- Compression Progress -->
-        <div v-if="isCompressing" class="mt-4">
-            <div class="bg-white rounded-xl p-6 shadow-sm border">
-                <div class="flex items-center space-x-3 mb-4">
-                    <div class="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                        <svg class="w-4 h-4 text-blue-600 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-                        </svg>
-                    </div>
-                    <div>
-                        <p class="font-semibold text-slate-800">Compressing Video...</p>
-                        <p class="text-sm text-slate-600">Optimizing for faster upload</p>
-                    </div>
-                </div>
-                <div class="w-full bg-slate-200 rounded-full h-2">
-                    <div class="bg-blue-500 h-2 rounded-full transition-all duration-300" :style="{ width: compressionProgress + '%' }"></div>
-                </div>
-                <p class="text-xs text-slate-500 mt-2">{{ compressionProgress.toFixed(1) }}% complete</p>
             </div>
         </div>
 
@@ -197,7 +172,7 @@ const totalChunks = ref(0)
 const uploadComplete = ref(false)
 const error = ref('')
 const uploadId = ref('')
-const enableCompression = ref(true)
+const enableCompression = ref(false) // Disabled by default - browser compression often crashes
 
 // Upload speed tracking
 const uploadStartTime = ref(null)
@@ -205,6 +180,10 @@ const uploadedBytes = ref(0)
 const totalBytes = ref(0)
 const uploadSpeed = ref('Calculating...')
 const estimatedTimeRemaining = ref('Calculating...')
+
+// Note: Compression is disabled by default because browser-based video compression
+// using Canvas/MediaRecorder is unreliable and often crashes browsers with large files.
+// Enable only for small files if needed.
 
 // File handling
 const handleFileSelect = (event) => {
@@ -330,34 +309,19 @@ const startUpload = async () => {
     if (!selectedFile.value) return
 
     try {
-        isCompressing.value = enableCompression.value
-        compressionProgress.value = 0
-
-        // Compress video if enabled
-        let fileToUpload = selectedFile.value
-        if (enableCompression.value) {
-            try {
-                fileToUpload = await compressVideo(selectedFile.value)
-                compressedFile.value = fileToUpload
-            } catch (err) {
-                console.warn('Compression failed, uploading original file:', err)
-                fileToUpload = selectedFile.value
-            }
-        }
-
-        isCompressing.value = false
+        error.value = ''
         isUploading.value = true
         uploadStartTime.value = Date.now()
-        totalBytes.value = fileToUpload.size
+        totalBytes.value = selectedFile.value.size
         uploadedBytes.value = 0
 
-        // Initialize upload
-        await initiateChunkedUpload(fileToUpload)
+        // Initialize upload with original file (no compression - it crashes browsers)
+        await initiateChunkedUpload(selectedFile.value)
 
     } catch (err) {
-        error.value = err.message
+        console.error('Upload error:', err)
+        error.value = err.message || 'Upload failed. Please try again.'
         isUploading.value = false
-        isCompressing.value = false
         emit('upload-error', err.message)
     }
 }
@@ -365,14 +329,22 @@ const startUpload = async () => {
 const initiateChunkedUpload = async (file) => {
     const chunks = Math.ceil(file.size / props.chunkSize)
     totalChunks.value = chunks
-    
+
+    // Get CSRF token
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+    if (!csrfToken) {
+        throw new Error('CSRF token not found. Please refresh the page.')
+    }
+
     // Initialize upload session
     const initResponse = await fetch('/api/upload/initiate', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+            'X-CSRF-TOKEN': csrfToken,
+            'Accept': 'application/json',
         },
+        credentials: 'same-origin',
         body: JSON.stringify({
             fileName: file.name,
             fileSize: file.size,
@@ -380,14 +352,24 @@ const initiateChunkedUpload = async (file) => {
             totalChunks: chunks
         })
     })
-    
+
+    if (!initResponse.ok) {
+        if (initResponse.status === 401) {
+            throw new Error('Session expired. Please refresh the page and try again.')
+        }
+        if (initResponse.status === 419) {
+            throw new Error('CSRF token mismatch. Please refresh the page.')
+        }
+        throw new Error(`Server error: ${initResponse.status}`)
+    }
+
     const initData = await initResponse.json()
     if (!initData.success) {
         throw new Error(initData.error || 'Failed to initialize upload')
     }
-    
+
     uploadId.value = initData.uploadId
-    
+
     // Upload chunks concurrently (max 3 at a time for better performance)
     await uploadChunksConcurrent(file, chunks)
 }
@@ -429,47 +411,69 @@ const uploadChunk = async (file, chunkIndex) => {
     const start = chunkIndex * props.chunkSize
     const end = Math.min(start + props.chunkSize, file.size)
     const chunk = file.slice(start, end)
-    
+
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+
     const formData = new FormData()
     formData.append('chunk', chunk)
     formData.append('chunkNumber', chunkIndex)
     formData.append('totalChunks', totalChunks.value)
-    
+
     const response = await fetch(`/api/upload/${uploadId.value}/chunk`, {
         method: 'POST',
         headers: {
-            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+            'X-CSRF-TOKEN': csrfToken,
+            'Accept': 'application/json',
         },
+        credentials: 'same-origin',
         body: formData
     })
-    
+
+    if (!response.ok) {
+        if (response.status === 401 || response.status === 419) {
+            throw new Error('Session expired. Please refresh the page.')
+        }
+        throw new Error(`Chunk ${chunkIndex} upload failed: ${response.status}`)
+    }
+
     const data = await response.json()
     if (!data.success) {
         throw new Error(data.error || 'Chunk upload failed')
     }
-    
+
     // Update progress
     uploadedChunks.value = data.uploadedChunks
     uploadProgress.value = data.progress
     uploadedBytes.value = (uploadedChunks.value / totalChunks.value) * totalBytes.value
-    
+
     // Update speed calculation
     updateUploadSpeed()
 }
 
 const finalizeUpload = async () => {
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+
     const response = await fetch(`/api/upload/${uploadId.value}/finalize`, {
         method: 'POST',
         headers: {
-            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
-        }
+            'X-CSRF-TOKEN': csrfToken,
+            'Accept': 'application/json',
+        },
+        credentials: 'same-origin',
     })
-    
+
+    if (!response.ok) {
+        if (response.status === 401 || response.status === 419) {
+            throw new Error('Session expired. Please refresh the page.')
+        }
+        throw new Error(`Finalization failed: ${response.status}`)
+    }
+
     const data = await response.json()
     if (!data.success) {
         throw new Error(data.error || 'Upload finalization failed')
     }
-    
+
     isUploading.value = false
     uploadComplete.value = true
 
@@ -479,7 +483,7 @@ const finalizeUpload = async () => {
         fileName: selectedFile.value.name,
         fileSize: data.fileSize,
         duration: data.duration,
-        storageDisk: data.storageDisk || 'public'
+        storageDisk: data.storage_disk || 'public'
     })
 }
 

@@ -70,8 +70,8 @@ Route::prefix('chatbot')->name('api.chatbot.')->group(function () {
     Route::post('/chat/{sessionId}/end', [ChatbotController::class, 'endChat'])->name('end');
 });
 
-// Chunked upload routes
-Route::middleware('auth')->prefix('upload')->name('api.upload.')->group(function () {
+// Chunked upload routes - using web middleware for session-based auth
+Route::middleware(['web', 'auth'])->prefix('upload')->name('api.upload.')->group(function () {
     Route::post('/initiate', [App\Http\Controllers\ChunkedUploadController::class, 'initiate'])->name('initiate');
     Route::post('/{uploadId}/chunk', [App\Http\Controllers\ChunkedUploadController::class, 'uploadChunk'])->name('chunk');
     Route::post('/{uploadId}/finalize', [App\Http\Controllers\ChunkedUploadController::class, 'finalize'])->name('finalize');
