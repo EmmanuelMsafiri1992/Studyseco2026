@@ -42,6 +42,17 @@ const isUploading = ref(false);
 const uploadProgress = ref(0);
 const showChunkedUpload = ref(false);
 
+// Edit Lesson state
+const showEditLessonForm = ref(false);
+const editingLesson = ref(null);
+const editLessonData = ref({
+    title: '',
+    description: '',
+    notes: '',
+    videoData: null,
+});
+const showEditChunkedUpload = ref(false);
+
 const selectedTopic = computed(() => {
     return props.subject?.topics?.find(topic => topic.id === selectedTopicId.value);
 });
@@ -265,6 +276,117 @@ const toggleLessonPublish = async (lesson, event) => {
     } catch (error) {
         console.error('Error toggling publish status:', error);
         alert('Failed to update lesson status. Please try again.');
+    }
+};
+
+// Edit Lesson Functions
+const openEditLesson = (lesson, event) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    editingLesson.value = lesson;
+    editLessonData.value = {
+        title: lesson.title,
+        description: lesson.description || '',
+        notes: lesson.notes || '',
+        videoData: null, // Will be set if user uploads new video
+    };
+    showEditLessonForm.value = true;
+};
+
+const updateLesson = async () => {
+    if (isUploading.value || !editingLesson.value) return;
+
+    try {
+        isUploading.value = true;
+
+        const formData = new FormData();
+        formData.append('title', editLessonData.value.title);
+        formData.append('description', editLessonData.value.description);
+        formData.append('notes', editLessonData.value.notes);
+
+        // If we have new chunked video data, use that
+        if (editLessonData.value.videoData) {
+            formData.append('video_path', editLessonData.value.videoData.filePath);
+            formData.append('video_filename', editLessonData.value.videoData.fileName || 'uploaded_video.mp4');
+            if (editLessonData.value.videoData.duration) {
+                formData.append('duration_minutes', editLessonData.value.videoData.duration);
+            }
+            if (editLessonData.value.videoData.storageDisk) {
+                formData.append('storage_disk', editLessonData.value.videoData.storageDisk);
+            }
+        }
+
+        // Use POST with _method for Laravel
+        formData.append('_method', 'PUT');
+
+        const response = await axios.post(route('lessons.update', editingLesson.value.id), formData);
+
+        if (response.data.success) {
+            // Update the lesson in the local state
+            Object.assign(editingLesson.value, response.data.lesson);
+
+            // Reset form
+            cancelEditLesson();
+            alert('Lesson updated successfully!');
+        }
+    } catch (error) {
+        console.error('Error updating lesson:', error);
+        alert('Error updating lesson. Please try again.');
+    } finally {
+        isUploading.value = false;
+    }
+};
+
+const handleEditVideoUploadSuccess = (uploadResult) => {
+    editLessonData.value.videoData = uploadResult;
+    showEditChunkedUpload.value = false;
+};
+
+const handleEditVideoUploadError = (error) => {
+    console.error('Video upload error:', error);
+    alert('Video upload failed. Please try again.');
+};
+
+const removeEditVideo = () => {
+    editLessonData.value.videoData = null;
+    showEditChunkedUpload.value = false;
+};
+
+const cancelEditLesson = () => {
+    editingLesson.value = null;
+    editLessonData.value = { title: '', description: '', notes: '', videoData: null };
+    showEditLessonForm.value = false;
+    showEditChunkedUpload.value = false;
+};
+
+// Delete Lesson
+const deleteLesson = async (lesson, event) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (!confirm(`Are you sure you want to delete "${lesson.title}"? This cannot be undone.`)) {
+        return;
+    }
+
+    try {
+        const response = await axios.delete(route('lessons.destroy', lesson.id));
+
+        if (response.data.success) {
+            // Remove lesson from local state
+            for (const topic of props.subject.topics) {
+                if (topic.lessons) {
+                    const index = topic.lessons.findIndex(l => l.id === lesson.id);
+                    if (index !== -1) {
+                        topic.lessons.splice(index, 1);
+                        break;
+                    }
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Error deleting lesson:', error);
+        alert('Failed to delete lesson. Please try again.');
     }
 };
 
@@ -495,22 +617,44 @@ onMounted(() => {
                                                         </div>
                                                     </div>
 
-                                                    <!-- Publish Button for Admins / Completion Status for Students -->
-                                                    <div class="flex-shrink-0 ml-2">
-                                                        <!-- Admin: Show Publish/Unpublish Button -->
-                                                        <button
-                                                            v-if="canManageContent"
-                                                            @click="toggleLessonPublish(lesson, $event)"
-                                                            :class="[
-                                                                'px-2 py-1 text-xs font-semibold rounded-lg transition-all duration-200 shadow-sm',
-                                                                lesson.is_published
-                                                                    ? 'bg-green-500 text-white hover:bg-green-600'
-                                                                    : 'bg-indigo-500 text-white hover:bg-indigo-600 animate-pulse'
-                                                            ]"
-                                                            :title="lesson.is_published ? 'Click to unpublish' : 'Click to publish this lesson'"
-                                                        >
-                                                            {{ lesson.is_published ? '✓ Live' : 'Publish' }}
-                                                        </button>
+                                                    <!-- Admin Actions / Student Completion Status -->
+                                                    <div class="flex-shrink-0 ml-2 flex items-center space-x-1">
+                                                        <!-- Admin: Show Edit, Delete, Publish Buttons -->
+                                                        <template v-if="canManageContent">
+                                                            <!-- Edit Button -->
+                                                            <button
+                                                                @click="openEditLesson(lesson, $event)"
+                                                                class="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
+                                                                title="Edit lesson"
+                                                            >
+                                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                                                                </svg>
+                                                            </button>
+                                                            <!-- Delete Button -->
+                                                            <button
+                                                                @click="deleteLesson(lesson, $event)"
+                                                                class="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                                                                title="Delete lesson"
+                                                            >
+                                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                                                                </svg>
+                                                            </button>
+                                                            <!-- Publish Button -->
+                                                            <button
+                                                                @click="toggleLessonPublish(lesson, $event)"
+                                                                :class="[
+                                                                    'px-2 py-1 text-xs font-semibold rounded-lg transition-all duration-200 shadow-sm',
+                                                                    lesson.is_published
+                                                                        ? 'bg-green-500 text-white hover:bg-green-600'
+                                                                        : 'bg-indigo-500 text-white hover:bg-indigo-600 animate-pulse'
+                                                                ]"
+                                                                :title="lesson.is_published ? 'Click to unpublish' : 'Click to publish this lesson'"
+                                                            >
+                                                                {{ lesson.is_published ? '✓ Live' : 'Publish' }}
+                                                            </button>
+                                                        </template>
                                                         <!-- Student: Show Completion Status -->
                                                         <template v-else>
                                                             <div v-if="getLessonProgress(lesson) === 100" class="w-5 h-5 text-green-500">
@@ -849,6 +993,129 @@ onMounted(() => {
                         <button type="submit" :disabled="isUploading"
                                 class="px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-xl font-medium hover:from-indigo-600 hover:to-purple-700 transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed">
                             <span v-if="!isUploading">Add Lesson</span>
+                            <span v-else class="flex items-center space-x-2">
+                                <svg class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                                    <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" class="opacity-25"></circle>
+                                    <path fill="currentColor" class="opacity-75" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                <span>Saving...</span>
+                            </span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Edit Lesson Modal -->
+        <div v-if="showEditLessonForm" class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+            <div class="bg-white/90 backdrop-blur-xl rounded-3xl p-8 shadow-2xl border border-slate-200/50 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+                <h3 class="text-xl font-bold text-slate-800 mb-6">Edit Lesson</h3>
+                <form @submit.prevent="updateLesson">
+                    <div class="space-y-6">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-2">Lesson Title*</label>
+                            <input v-model="editLessonData.title" type="text" required
+                                   class="w-full bg-slate-100/70 px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-white transition-all duration-200"
+                                   placeholder="e.g. Introduction to Algebra">
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-2">Description</label>
+                            <textarea v-model="editLessonData.description" rows="3"
+                                      class="w-full bg-slate-100/70 px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-white transition-all duration-200"
+                                      placeholder="What will students learn in this lesson?"></textarea>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-2">Video File</label>
+
+                            <!-- Current Video Status -->
+                            <div v-if="editingLesson?.video_path && !editLessonData.videoData && !showEditChunkedUpload"
+                                 class="mb-3 p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                                <div class="flex items-center space-x-3">
+                                    <div class="flex-shrink-0">
+                                        <svg class="h-8 w-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <p class="text-sm font-medium text-blue-800">Current video attached</p>
+                                        <p class="text-xs text-blue-600">
+                                            {{ editingLesson.video_filename || 'Video file' }}
+                                            <span v-if="editingLesson.duration_minutes" class="ml-2">{{ editingLesson.duration_minutes }} min</span>
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Video Upload Interface -->
+                            <div v-if="!editLessonData.videoData && !showEditChunkedUpload" class="space-y-3">
+                                <button @click="showEditChunkedUpload = true" type="button"
+                                        class="w-full bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-dashed border-blue-300 rounded-2xl p-6 hover:border-blue-400 hover:bg-gradient-to-r hover:from-blue-100 hover:to-indigo-100 transition-all duration-200">
+                                    <div class="text-center">
+                                        <svg class="mx-auto h-12 w-12 text-blue-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+                                            <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                                        </svg>
+                                        <p class="mt-2 text-sm font-medium text-slate-700">
+                                            {{ editingLesson?.video_path ? 'Upload New Video (Replace)' : 'Upload Video File' }}
+                                        </p>
+                                        <p class="text-xs text-slate-500">Fast chunked upload with compression</p>
+                                        <p class="text-xs text-slate-400 mt-1">MP4, MOV, AVI, WMV, MKV up to 1GB</p>
+                                    </div>
+                                </button>
+                            </div>
+
+                            <!-- Chunked Upload Component -->
+                            <ChunkedVideoUpload
+                                v-if="showEditChunkedUpload"
+                                @upload-success="handleEditVideoUploadSuccess"
+                                @upload-error="handleEditVideoUploadError"
+                                @cancel="showEditChunkedUpload = false"
+                                class="mt-3"
+                            />
+
+                            <!-- New Video Selected State -->
+                            <div v-if="editLessonData.videoData" class="mt-3 p-4 bg-green-50 border border-green-200 rounded-xl">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center space-x-3">
+                                        <div class="flex-shrink-0">
+                                            <svg class="h-8 w-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                            </svg>
+                                        </div>
+                                        <div>
+                                            <p class="text-sm font-medium text-green-800">New video uploaded!</p>
+                                            <p class="text-xs text-green-600">
+                                                {{ editLessonData.videoData.fileName }}
+                                                <span v-if="editLessonData.videoData.duration" class="ml-2">{{ editLessonData.videoData.duration }} min</span>
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <button @click="removeEditVideo" type="button" class="text-green-600 hover:text-green-800">
+                                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-2">Lesson Notes</label>
+                            <textarea v-model="editLessonData.notes" rows="4"
+                                      class="w-full bg-slate-100/70 px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-white transition-all duration-200"
+                                      placeholder="Additional notes, resources, or homework for this lesson..."></textarea>
+                        </div>
+                    </div>
+
+                    <div class="flex justify-end space-x-4 mt-8">
+                        <button type="button" @click="cancelEditLesson"
+                                class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-medium transition-all duration-200">
+                            Cancel
+                        </button>
+                        <button type="submit" :disabled="isUploading"
+                                class="px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-xl font-medium hover:from-indigo-600 hover:to-purple-700 transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed">
+                            <span v-if="!isUploading">Update Lesson</span>
                             <span v-else class="flex items-center space-x-2">
                                 <svg class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
                                     <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" class="opacity-25"></circle>

@@ -124,6 +124,9 @@ class LessonController extends Controller
             'order_index' => 'nullable|integer|min:0',
             'is_published' => 'boolean',
             'video' => 'nullable|file|mimes:mp4,mov,avi,wmv,mkv|max:1048576', // 1GB max for larger video files
+            'video_path' => 'nullable|string', // For chunked uploads
+            'video_filename' => 'nullable|string', // For chunked uploads
+            'storage_disk' => 'nullable|string', // For chunked uploads
         ]);
 
         if ($request->hasFile('video')) {
@@ -166,6 +169,22 @@ class LessonController extends Controller
                     // Continue without duration if there's an error
                 }
             }
+        }
+        // Handle chunked upload (video already processed and stored)
+        elseif ($request->has('video_path') && $request->video_path) {
+            // Delete old video if exists
+            if ($lesson->video_path) {
+                $oldDisk = $lesson->storage_disk ?? 'public';
+                try {
+                    Storage::disk($oldDisk)->delete($lesson->video_path);
+                } catch (\Exception $e) {
+                    // Continue even if delete fails
+                }
+            }
+
+            $validated['video_path'] = $request->video_path;
+            $validated['video_filename'] = $request->video_filename ?? 'uploaded_video.mp4';
+            $validated['storage_disk'] = $request->storage_disk ?? 'public';
         }
 
         $lesson->update($validated);
