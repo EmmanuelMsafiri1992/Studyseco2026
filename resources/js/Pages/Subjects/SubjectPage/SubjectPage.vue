@@ -424,14 +424,9 @@ const deleteLesson = async (lesson, event) => {
 onMounted(() => {
     checkMobile();
     window.addEventListener('resize', checkMobile);
-    
-    // Expand all modules by default
-    if (props.subject?.topics) {
-        props.subject.topics.forEach(topic => {
-            expandedModules.value.add(topic.id);
-        });
-    }
-    
+
+    // Topics are collapsed by default - user must click to expand
+
     // Select first lesson if available
     if (props.subject?.topics?.[0]?.lessons?.[0]) {
         selectedLesson.value = props.subject.topics[0].lessons[0];
