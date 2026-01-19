@@ -246,6 +246,28 @@ const selectTopicForLesson = (topicId) => {
     showAddLessonForm.value = true;
 };
 
+// Publish/Unpublish lesson
+const toggleLessonPublish = async (lesson, event) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    try {
+        const endpoint = lesson.is_published
+            ? route('lessons.unpublish', lesson.id)
+            : route('lessons.publish', lesson.id);
+
+        const response = await axios.patch(endpoint);
+
+        if (response.data.success) {
+            // Update the lesson in the local state
+            lesson.is_published = response.data.lesson.is_published;
+        }
+    } catch (error) {
+        console.error('Error toggling publish status:', error);
+        alert('Failed to update lesson status. Please try again.');
+    }
+};
+
 onMounted(() => {
     checkMobile();
     window.addEventListener('resize', checkMobile);
@@ -447,12 +469,33 @@ onMounted(() => {
                                             <div class="flex-1 min-w-0">
                                                 <div class="flex items-center justify-between">
                                                     <div class="min-w-0 flex-1">
-                                                        <p :class="[
-                                                            'text-sm font-medium truncate',
-                                                            selectedLesson?.id === lesson.id ? 'text-indigo-600' : 'text-slate-800'
-                                                        ]">
-                                                            {{ (topic.order_index + 1 || 1) }}.{{ (lesson.order_index + 1 || 1) }} {{ lesson.title }}
-                                                        </p>
+                                                        <div class="flex items-center space-x-2">
+                                                            <p :class="[
+                                                                'text-sm font-medium truncate',
+                                                                selectedLesson?.id === lesson.id ? 'text-indigo-600' : 'text-slate-800',
+                                                                !lesson.is_published ? 'opacity-70' : ''
+                                                            ]">
+                                                                {{ (topic.order_index + 1 || 1) }}.{{ (lesson.order_index + 1 || 1) }} {{ lesson.title }}
+                                                            </p>
+                                                            <!-- Draft Badge + Publish Button for unpublished lessons -->
+                                                            <template v-if="canManageContent">
+                                                                <span v-if="!lesson.is_published" class="px-1.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-700 rounded">
+                                                                    Draft
+                                                                </span>
+                                                                <button
+                                                                    @click="toggleLessonPublish(lesson, $event)"
+                                                                    :class="[
+                                                                        'px-1.5 py-0.5 text-xs font-medium rounded transition-colors',
+                                                                        lesson.is_published
+                                                                            ? 'bg-green-100 text-green-700 hover:bg-red-100 hover:text-red-700'
+                                                                            : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'
+                                                                    ]"
+                                                                    :title="lesson.is_published ? 'Click to unpublish' : 'Click to publish'"
+                                                                >
+                                                                    {{ lesson.is_published ? 'Published' : 'Publish' }}
+                                                                </button>
+                                                            </template>
+                                                        </div>
                                                         <div class="flex items-center space-x-2 mt-1">
                                                             <span v-if="getLessonTypeIcon(lesson) === 'video'" class="text-xs text-slate-500">
                                                                 MULTIMEDIA

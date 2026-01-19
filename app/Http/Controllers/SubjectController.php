@@ -107,17 +107,24 @@ class SubjectController extends Controller
             }
         }
 
+        // Admin/Teachers see all lessons, Students see only published
+        $isAdmin = in_array($user->role, ['admin', 'teacher']);
+
         $subject->load([
             'topics' => function ($query) {
                 $query->where('is_active', true)->orderBy('order_index');
             },
-            'topics.lessons' => function ($query) {
-                $query->where('is_published', true)->orderBy('order_index');
+            'topics.lessons' => function ($query) use ($isAdmin) {
+                if (!$isAdmin) {
+                    $query->where('is_published', true);
+                }
+                $query->orderBy('order_index');
             }
         ]);
 
         return Inertia::render('Subjects/SubjectPage/SubjectPage', [
             'subject' => $subject,
+            'canManage' => $isAdmin,
         ]);
     }
 
