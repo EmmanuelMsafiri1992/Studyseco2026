@@ -185,6 +185,185 @@ class EnrollmentController extends Controller
     }
 
     // Admin methods
+
+    /**
+     * Show form to create a new enrollment (admin only)
+     */
+    public function create()
+    {
+        $subjects = Subject::where('is_active', true)
+            ->orderBy('grade_level')
+            ->orderBy('name')
+            ->get();
+
+        $students = User::where('role', 'student')
+            ->orWhereHas('roles', function ($q) {
+                $q->where('slug', 'student');
+            })
+            ->orderBy('name')
+            ->get(['id', 'name', 'email', 'phone']);
+
+        $paymentMethods = PaymentMethod::where('is_active', true)->get();
+
+        return Inertia::render('Admin/Enrollments/Create', [
+            'subjects' => $subjects,
+            'students' => $students,
+            'paymentMethods' => $paymentMethods
+        ]);
+    }
+
+    /**
+     * Store a new enrollment created by admin
+     */
+    public function adminStore(Request $request)
+    {
+        $validated = $request->validate([
+            'user_id' => 'nullable|exists:users,id',
+            'name' => 'required|string|max:255',
+            'email' => 'required|email|max:255',
+            'phone' => 'required|string|max:20',
+            'address' => 'required|string|max:500',
+            'country' => 'required|string|max:100',
+            'selected_subjects' => 'required|array|min:1',
+            'selected_subjects.*' => 'integer|exists:subjects,id',
+            'enrollment_type' => 'required|in:trial,paid,free',
+            'access_duration_months' => 'required|integer|min:1|max:24',
+            'admin_notes' => 'nullable|string|max:1000',
+        ]);
+
+        $isTrial = $validated['enrollment_type'] === 'trial';
+        $isFree = $validated['enrollment_type'] === 'free';
+
+        // Determine region based on country
+        $region = Enrollment::getRegionForCountry($validated['country']);
+        $currency = Enrollment::getCurrencyForRegion($region);
+        $pricePerSubject = ($isTrial || $isFree) ? 0 : Enrollment::getPricePerSubject($region);
+        $totalAmount = $pricePerSubject * count($validated['selected_subjects']);
+
+        // Calculate access expiration
+        $accessExpiresAt = now()->addMonths($validated['access_duration_months']);
+
+        // Create enrollment record
+        $enrollment = Enrollment::create([
+            'name' => $validated['name'],
+            'email' => $validated['email'],
+            'phone' => $validated['phone'],
+            'address' => $validated['address'],
+            'country' => $validated['country'],
+            'region' => $region,
+            'selected_subjects' => $validated['selected_subjects'],
+            'subject_count' => count($validated['selected_subjects']),
+            'price_per_subject' => $pricePerSubject,
+            'total_amount' => $totalAmount,
+            'currency' => $currency,
+            'is_trial' => $isTrial,
+            'trial_started_at' => $isTrial ? now() : null,
+            'trial_expires_at' => $isTrial ? now()->addDays(7) : null,
+            'access_expires_at' => $accessExpiresAt,
+            'status' => 'approved', // Auto-approve admin-created enrollments
+            'payment_method' => $isTrial ? 'trial' : ($isFree ? 'admin_free' : 'admin_paid'),
+            'payment_reference' => strtoupper(uniqid('ADM')),
+            'approved_at' => now(),
+            'approved_by' => auth()->id(),
+            'is_verified' => true,
+            'email_verified_at' => now(),
+            'phone_verified_at' => now(),
+            'admin_notes' => $validated['admin_notes'],
+            'user_id' => $validated['user_id'],
+        ]);
+
+        // Create or link user account
+        $user = null;
+        $tempPassword = null;
+
+        if ($validated['user_id']) {
+            // Link to existing user
+            $user = User::find($validated['user_id']);
+        } else {
+            // Check if user with email exists
+            $user = User::where('email', $validated['email'])->first();
+
+            if (!$user) {
+                // Create new user account
+                $tempPassword = 'StudySeco' . rand(1000, 9999);
+                $user = User::create([
+                    'name' => $validated['name'],
+                    'email' => $validated['email'],
+                    'phone' => $validated['phone'],
+                    'password' => bcrypt($tempPassword),
+                    'role' => 'student',
+                    'email_verified_at' => now()
+                ]);
+            }
+        }
+
+        // Link user to enrollment
+        $enrollment->update(['user_id' => $user->id]);
+
+        // Send welcome email if new user was created
+        if ($tempPassword) {
+            try {
+                $user->notify(new WelcomeEmail($user, $enrollment, $tempPassword));
+            } catch (\Exception $e) {
+                logger('Failed to send welcome email: ' . $e->getMessage());
+            }
+        }
+
+        return redirect()
+            ->route('admin.enrollments.index')
+            ->with('success', 'Student enrolled successfully!' . ($tempPassword ? ' Login credentials sent to their email.' : ''));
+    }
+
+    /**
+     * Show form to edit an enrollment (admin only)
+     */
+    public function edit(Enrollment $enrollment)
+    {
+        $enrollment->load(['user', 'payments.paymentMethod']);
+
+        $subjects = Subject::where('is_active', true)
+            ->orderBy('grade_level')
+            ->orderBy('name')
+            ->get();
+
+        return Inertia::render('Admin/Enrollments/Edit', [
+            'enrollment' => $enrollment,
+            'subjects' => $subjects,
+            'subjectNames' => $enrollment->selected_subjects_names
+        ]);
+    }
+
+    /**
+     * Update an enrollment (admin only)
+     */
+    public function adminUpdate(Request $request, Enrollment $enrollment)
+    {
+        $validated = $request->validate([
+            'selected_subjects' => 'required|array|min:1',
+            'selected_subjects.*' => 'integer|exists:subjects,id',
+            'access_expires_at' => 'required|date|after:today',
+            'status' => 'required|in:pending,approved,rejected',
+            'admin_notes' => 'nullable|string|max:1000',
+        ]);
+
+        // Recalculate pricing
+        $pricePerSubject = $enrollment->price_per_subject;
+        $totalAmount = $pricePerSubject * count($validated['selected_subjects']);
+
+        $enrollment->update([
+            'selected_subjects' => $validated['selected_subjects'],
+            'subject_count' => count($validated['selected_subjects']),
+            'total_amount' => $totalAmount,
+            'access_expires_at' => $validated['access_expires_at'],
+            'status' => $validated['status'],
+            'admin_notes' => $validated['admin_notes'],
+        ]);
+
+        return redirect()
+            ->route('admin.enrollments.show', $enrollment)
+            ->with('success', 'Enrollment updated successfully.');
+    }
+
     public function index()
     {
         $enrollments = Enrollment::with(['payments.paymentMethod', 'user'])

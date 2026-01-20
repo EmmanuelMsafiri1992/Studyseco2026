@@ -219,19 +219,27 @@ const getPaymentProofUrl = () => {
                     <h3 class="text-lg font-bold text-slate-800 mb-4">Actions</h3>
                     
                     <div class="space-y-3">
-                        <button v-if="enrollment.status === 'pending'" 
+                        <Link :href="route('admin.enrollments.edit', enrollment.id)"
+                              class="w-full bg-indigo-500 text-white px-4 py-3 rounded-2xl font-medium hover:bg-indigo-600 transition-colors flex items-center justify-center">
+                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                            </svg>
+                            Edit Enrollment
+                        </Link>
+
+                        <button v-if="enrollment.status === 'pending'"
                                 @click="showApproveModal = true"
                                 class="w-full bg-green-500 text-white px-4 py-3 rounded-2xl font-medium hover:bg-green-600 transition-colors">
                             Approve Enrollment
                         </button>
-                        
-                        <button v-if="enrollment.status === 'pending'" 
+
+                        <button v-if="enrollment.status === 'pending'"
                                 @click="showRejectModal = true"
                                 class="w-full bg-red-500 text-white px-4 py-3 rounded-2xl font-medium hover:bg-red-600 transition-colors">
                             Reject Enrollment
                         </button>
 
-                        <div v-if="enrollment.status !== 'pending'" 
+                        <div v-if="enrollment.status !== 'pending'"
                              class="p-4 bg-slate-100 rounded-2xl text-center text-slate-600">
                             <p class="text-sm">
                                 This enrollment has been {{ enrollment.status }}.

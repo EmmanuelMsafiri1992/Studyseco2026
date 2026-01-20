@@ -1045,7 +1045,11 @@ Route::middleware('auth')->group(function () {
     // Admin enrollment management (only for admin users)
     Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->group(function () {
         Route::get('/enrollments', [EnrollmentController::class, 'index'])->name('enrollments.index');
+        Route::get('/enrollments/create', [EnrollmentController::class, 'create'])->name('enrollments.create');
+        Route::post('/enrollments', [EnrollmentController::class, 'adminStore'])->name('enrollments.store');
         Route::get('/enrollments/{enrollment}', [EnrollmentController::class, 'show'])->name('enrollments.show');
+        Route::get('/enrollments/{enrollment}/edit', [EnrollmentController::class, 'edit'])->name('enrollments.edit');
+        Route::put('/enrollments/{enrollment}', [EnrollmentController::class, 'adminUpdate'])->name('enrollments.update');
         Route::patch('/enrollments/{enrollment}/approve', [EnrollmentController::class, 'approve'])->name('enrollments.approve');
         Route::patch('/enrollments/{enrollment}/reject', [EnrollmentController::class, 'reject'])->name('enrollments.reject');
         Route::get('/enrollments/{enrollment}/payment-proof', [EnrollmentController::class, 'viewPaymentProof'])->name('enrollments.payment-proof');
