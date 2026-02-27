@@ -352,20 +352,20 @@ onUnmounted(() => {
     <Head title="Bulk AI Video Generation" />
 
     <DashboardLayout>
-        <template #header>
-            <div class="flex items-center justify-between">
-                <div>
-                    <h2 class="text-2xl font-bold text-gray-800">Bulk AI Video Generation</h2>
-                    <p class="text-sm text-gray-500 mt-1">Generate AI avatar videos for multiple lessons at once</p>
-                </div>
-                <div v-if="credits" class="text-right">
-                    <p class="text-sm text-gray-500">HeyGen Credits</p>
-                    <p class="text-2xl font-bold text-purple-600">{{ credits.remaining_quota || 'N/A' }}</p>
+        <div class="py-6">
+            <!-- Page Header -->
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="text-2xl font-bold text-gray-800">Bulk AI Video Generation</h2>
+                        <p class="text-sm text-gray-500 mt-1">Generate AI avatar videos for multiple lessons at once</p>
+                    </div>
+                    <div v-if="credits" class="text-right">
+                        <p class="text-sm text-gray-500">HeyGen Credits</p>
+                        <p class="text-2xl font-bold text-purple-600">{{ credits.remaining_quota || 'N/A' }}</p>
+                    </div>
                 </div>
             </div>
-        </template>
-
-        <div class="py-6">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <!-- Not Configured Warning -->
                 <div v-if="!heygenConfigured" class="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl">
