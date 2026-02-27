@@ -55,4 +55,9 @@ return [
         'scheme' => 'https',
     ],
 
+    // HeyGen AI Video Generation
+    'heygen' => [
+        'api_key' => env('HEYGEN_API_KEY'),
+    ],
+
 ];

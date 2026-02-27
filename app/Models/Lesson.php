@@ -34,6 +34,15 @@ class Lesson extends Model
         'source_height',
         'source_bitrate',
         'duration_seconds',
+        // HeyGen fields
+        'heygen_script',
+        'heygen_avatar_id',
+        'heygen_voice_id',
+        'heygen_video_id',
+        'heygen_status',
+        'heygen_error',
+        'heygen_started_at',
+        'heygen_completed_at',
     ];
 
     protected $casts = [
@@ -45,6 +54,8 @@ class Lesson extends Model
         'source_bitrate' => 'integer',
         'duration_seconds' => 'integer',
         'transcoding_progress' => 'integer',
+        'heygen_started_at' => 'datetime',
+        'heygen_completed_at' => 'datetime',
     ];
 
     protected $appends = [

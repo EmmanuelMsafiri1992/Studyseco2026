@@ -662,6 +662,28 @@ Route::middleware('auth')->group(function () {
         // Video Transcoding Routes
         Route::get('lessons/{lesson}/transcoding-status', [LessonController::class, 'transcodingStatus'])->name('lessons.transcoding-status');
         Route::post('lessons/{lesson}/start-transcoding', [LessonController::class, 'startTranscoding'])->name('lessons.start-transcoding');
+
+        // HeyGen AI Video Generation Routes
+        Route::prefix('heygen')->name('heygen.')->group(function () {
+            Route::get('status', [\App\Http\Controllers\HeyGenController::class, 'status'])->name('status');
+            Route::get('avatars', [\App\Http\Controllers\HeyGenController::class, 'avatars'])->name('avatars');
+            Route::get('voices', [\App\Http\Controllers\HeyGenController::class, 'voices'])->name('voices');
+            Route::get('credits', [\App\Http\Controllers\HeyGenController::class, 'credits'])->name('credits');
+            Route::post('lessons/{lesson}/generate', [\App\Http\Controllers\HeyGenController::class, 'generate'])->name('generate');
+            Route::get('lessons/{lesson}/generation-status', [\App\Http\Controllers\HeyGenController::class, 'generationStatus'])->name('generation-status');
+            Route::post('lessons/{lesson}/cancel', [\App\Http\Controllers\HeyGenController::class, 'cancel'])->name('cancel');
+            Route::post('lessons/{lesson}/retry', [\App\Http\Controllers\HeyGenController::class, 'retry'])->name('retry');
+        });
+    });
+
+    // Admin HeyGen Bulk Generation Routes
+    Route::middleware('role:admin')->prefix('admin/heygen')->name('admin.heygen.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\HeyGenBulkController::class, 'index'])->name('index');
+        Route::post('/generate', [\App\Http\Controllers\Admin\HeyGenBulkController::class, 'generate'])->name('generate');
+        Route::post('/status', [\App\Http\Controllers\Admin\HeyGenBulkController::class, 'status'])->name('status');
+        Route::post('/cancel-bulk', [\App\Http\Controllers\Admin\HeyGenBulkController::class, 'cancelBulk'])->name('cancel-bulk');
+        Route::post('/retry-failed', [\App\Http\Controllers\Admin\HeyGenBulkController::class, 'retryFailed'])->name('retry-failed');
+        Route::post('/suggest-script', [\App\Http\Controllers\Admin\HeyGenBulkController::class, 'suggestScript'])->name('suggest-script');
     });
 
     // Fees Management Routes (Admin only)

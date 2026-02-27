@@ -1,6 +1,7 @@
 <script setup>
 import { Link } from '@inertiajs/vue3';
 import { ref } from 'vue';
+import HeyGenVideoGenerator from '@/Components/HeyGenVideoGenerator.vue';
 
 const props = defineProps({
     lesson: Object,
@@ -8,6 +9,17 @@ const props = defineProps({
 });
 
 const showMenu = ref(false);
+const showHeyGenModal = ref(false);
+
+const openHeyGenGenerator = () => {
+    showMenu.value = false;
+    showHeyGenModal.value = true;
+};
+
+const onVideoGenerated = (data) => {
+    showHeyGenModal.value = false;
+    location.reload(); // Refresh to show the new video
+};
 
 const togglePublish = async () => {
     try {
@@ -74,12 +86,23 @@ const deleteLesson = async () => {
             </div>
             
             <!-- Status Badge -->
-            <div class="absolute top-4 left-4">
+            <div class="absolute top-4 left-4 flex flex-col space-y-1">
                 <span v-if="lesson.is_published" class="px-2 py-1 bg-green-500 text-white text-xs font-semibold rounded-full">
                     Published
                 </span>
                 <span v-else class="px-2 py-1 bg-amber-500 text-white text-xs font-semibold rounded-full">
                     Draft
+                </span>
+                <!-- HeyGen Status -->
+                <span v-if="lesson.heygen_status === 'processing' || lesson.heygen_status === 'pending'" class="px-2 py-1 bg-purple-500 text-white text-xs font-semibold rounded-full flex items-center space-x-1">
+                    <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                    </svg>
+                    <span>AI Generating</span>
+                </span>
+                <span v-else-if="lesson.heygen_status === 'failed'" class="px-2 py-1 bg-red-500 text-white text-xs font-semibold rounded-full">
+                    AI Failed
                 </span>
             </div>
             
@@ -113,6 +136,14 @@ const deleteLesson = async () => {
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path>
                                 </svg>
                                 <span>Edit Lesson</span>
+                            </div>
+                        </button>
+                        <button @click="openHeyGenGenerator" class="w-full text-left px-4 py-2 text-sm hover:bg-purple-50 transition-colors duration-150 text-purple-600">
+                            <div class="flex items-center space-x-2">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                                </svg>
+                                <span>Generate AI Video</span>
                             </div>
                         </button>
                         <button @click="deleteLesson(); showMenu = false" class="w-full text-left px-4 py-2 text-sm hover:bg-red-50 transition-colors duration-150 text-red-600">
@@ -172,4 +203,12 @@ const deleteLesson = async () => {
     
     <!-- Click away listener for menu -->
     <div v-if="showMenu" @click="showMenu = false" class="fixed inset-0 z-5"></div>
+
+    <!-- HeyGen Video Generator Modal -->
+    <HeyGenVideoGenerator
+        :show="showHeyGenModal"
+        :lesson="lesson"
+        @close="showHeyGenModal = false"
+        @generated="onVideoGenerated"
+    />
 </template>

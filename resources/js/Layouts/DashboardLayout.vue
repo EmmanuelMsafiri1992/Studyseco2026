@@ -46,7 +46,7 @@
             @click="toggleDropdown('academics')"
             :class="[
               'flex items-center justify-between w-full px-4 py-3 rounded-xl transition-all duration-300 hover:bg-slate-50 hover:text-slate-800',
-              isActiveSection(['Subject', 'Department', 'Teacher', 'AITraining']) ? 'text-slate-700 bg-indigo-50' : 'text-slate-600'
+              isActiveSection(['Subject', 'Department', 'Teacher', 'AITraining', 'HeyGen']) ? 'text-slate-700 bg-indigo-50' : 'text-slate-600'
             ]"
           >
             <div class="flex items-center">
@@ -96,9 +96,13 @@
                 <span>👨‍🏫 Teachers</span>
                 <span v-if="stats?.total_teachers" class="ml-auto text-xs bg-indigo-500 text-white px-2 py-1 rounded-full">{{ stats.total_teachers }}</span>
               </Link>
-              <Link :href="route('admin.ai-training.index')" :class="['flex items-center px-3 py-2 rounded-lg text-sm transition-all duration-200 hover:bg-indigo-50', 
+              <Link :href="route('admin.ai-training.index')" :class="['flex items-center px-3 py-2 rounded-lg text-sm transition-all duration-200 hover:bg-indigo-50',
                                                                       $page.component?.includes('AITraining') ? 'text-indigo-700 bg-indigo-50' : 'text-slate-600 hover:text-indigo-700']">
                 <span>🤖 AI Training</span>
+              </Link>
+              <Link :href="route('admin.heygen.index')" :class="['flex items-center px-3 py-2 rounded-lg text-sm transition-all duration-200 hover:bg-purple-50',
+                                                                      $page.component?.includes('HeyGen') ? 'text-purple-700 bg-purple-50' : 'text-slate-600 hover:text-purple-700']">
+                <span>🎬 AI Video Generator</span>
               </Link>
             </div>
           </div>
@@ -778,7 +782,7 @@ onMounted(async () => {
   if (isActiveSection(['Enrollment', 'Role', 'SchoolSelection'])) {
     dropdowns.value.student = true
   }
-  if (isActiveSection(['Subject', 'Department', 'Teacher', 'AITraining'])) {
+  if (isActiveSection(['Subject', 'Department', 'Teacher', 'AITraining', 'HeyGen'])) {
     dropdowns.value.academic = true
   }
   if (isActiveSection(['PaymentMethod', 'Payment'])) {
