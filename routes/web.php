@@ -757,6 +757,9 @@ Route::middleware('auth')->group(function () {
     Route::post('/admin/gcs/test', [SystemSettingsController::class, 'testGcsConnection'])
         ->name('admin.gcs.test')
         ->middleware('role:admin');
+    Route::post('/admin/heygen/test', [SystemSettingsController::class, 'testHeyGenConnection'])
+        ->name('admin.heygen.test')
+        ->middleware('role:admin');
 
     // Admin Department Management Routes
     Route::middleware('role:admin')->prefix('admin')->name('admin.')->group(function () {

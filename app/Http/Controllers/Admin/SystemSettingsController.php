@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\SystemSetting;
 use App\Services\CloudStorageService;
+use App\Services\HeyGenService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -371,6 +372,32 @@ class SystemSettingsController extends Controller
                 'type' => 'url',
                 'group' => 'storage',
                 'description' => 'Custom URL or Cloud CDN URL for faster delivery (optional)'
+            ],
+
+            // HeyGen AI Video Settings
+            [
+                'key' => 'heygen_enabled',
+                'name' => 'Enable HeyGen AI Videos',
+                'value' => false,
+                'type' => 'boolean',
+                'group' => 'heygen',
+                'description' => 'Enable HeyGen AI avatar video generation for lessons'
+            ],
+            [
+                'key' => 'heygen_api_key',
+                'name' => 'HeyGen API Key',
+                'value' => '',
+                'type' => 'password',
+                'group' => 'heygen',
+                'description' => 'Your HeyGen API key (get it from app.heygen.com/settings/api)'
+            ],
+            [
+                'key' => 'heygen_default_test_mode',
+                'name' => 'Default to Test Mode',
+                'value' => true,
+                'type' => 'boolean',
+                'group' => 'heygen',
+                'description' => 'Default to test mode (watermarked videos, no credit usage) for safety'
             ]
         ];
 
@@ -430,5 +457,51 @@ class SystemSettingsController extends Controller
         $result = CloudStorageService::testGcsConnection($validated);
 
         return response()->json($result);
+    }
+
+    /**
+     * Test HeyGen connection with provided API key
+     */
+    public function testHeyGenConnection(Request $request)
+    {
+        // Check if user is admin
+        if (auth()->user()->role !== 'admin') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only administrators can test HeyGen connection.'
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'api_key' => 'required|string',
+        ]);
+
+        try {
+            // Temporarily set the API key for testing
+            $response = \Illuminate\Support\Facades\Http::withHeaders([
+                'X-Api-Key' => $validated['api_key'],
+                'Content-Type' => 'application/json',
+            ])->timeout(30)->get('https://api.heygen.com/v1/user/remaining_quota');
+
+            if ($response->successful()) {
+                $data = $response->json();
+                return response()->json([
+                    'success' => true,
+                    'message' => 'HeyGen connection successful!',
+                    'credits' => $data['data'] ?? null,
+                ]);
+            } else {
+                $error = $response->json();
+                return response()->json([
+                    'success' => false,
+                    'message' => $error['error'] ?? $error['message'] ?? 'Invalid API key or connection failed',
+                ]);
+            }
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Connection failed: ' . $e->getMessage(),
+            ]);
+        }
     }
 }

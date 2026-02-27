@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\SystemSetting;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Exception;
@@ -13,7 +14,8 @@ class HeyGenService
 
     public function __construct()
     {
-        $this->apiKey = config('services.heygen.api_key') ?? '';
+        // First try to get from system settings (dashboard), then fall back to config/env
+        $this->apiKey = SystemSetting::get('heygen_api_key') ?: (config('services.heygen.api_key') ?? '');
     }
 
     /**
@@ -21,7 +23,24 @@ class HeyGenService
      */
     public function isConfigured(): bool
     {
+        $enabled = SystemSetting::get('heygen_enabled', false);
+        return $enabled && !empty($this->apiKey);
+    }
+
+    /**
+     * Check if HeyGen has an API key (regardless of enabled status).
+     */
+    public function hasApiKey(): bool
+    {
         return !empty($this->apiKey);
+    }
+
+    /**
+     * Get the default test mode setting.
+     */
+    public function getDefaultTestMode(): bool
+    {
+        return (bool) SystemSetting::get('heygen_default_test_mode', true);
     }
 
     /**
