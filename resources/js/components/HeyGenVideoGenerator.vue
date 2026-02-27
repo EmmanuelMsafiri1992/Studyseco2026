@@ -18,6 +18,7 @@ const success = ref(null);
 const script = ref('');
 const selectedAvatar = ref(null);
 const selectedVoice = ref(null);
+const testMode = ref(true); // Default to test mode to avoid accidental credit usage
 
 // Available options
 const avatars = ref([]);
@@ -148,6 +149,7 @@ const generateVideo = async () => {
             script: script.value,
             avatar_id: selectedAvatar.value,
             voice_id: selectedVoice.value,
+            test_mode: testMode.value,
         });
 
         if (response.data.success) {
@@ -327,6 +329,34 @@ const close = () => {
                         </div>
                     </div>
 
+                    <!-- Test Mode Toggle -->
+                    <div class="mb-6 p-4 rounded-xl" :class="testMode ? 'bg-amber-50 border border-amber-200' : 'bg-green-50 border border-green-200'">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-3">
+                                <div :class="testMode ? 'text-amber-500' : 'text-green-500'">
+                                    <svg v-if="testMode" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                                    </svg>
+                                    <svg v-else class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                </div>
+                                <div>
+                                    <h4 class="font-semibold" :class="testMode ? 'text-amber-800' : 'text-green-800'">
+                                        {{ testMode ? 'Test Mode (Free)' : 'Production Mode (Uses Credits)' }}
+                                    </h4>
+                                    <p class="text-sm" :class="testMode ? 'text-amber-600' : 'text-green-600'">
+                                        {{ testMode ? 'Video will have a watermark but won\'t use credits' : 'Full quality video, will consume credits' }}
+                                    </p>
+                                </div>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" v-model="testMode" class="sr-only peer">
+                                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                            </label>
+                        </div>
+                    </div>
+
                     <div v-if="heygenConfigured" class="space-y-6">
                         <!-- Script Input -->
                         <div>
@@ -456,7 +486,7 @@ const close = () => {
                             </svg>
                             <span>Generating...</span>
                         </span>
-                        <span v-else>Generate Video</span>
+                        <span v-else>{{ testMode ? 'Generate Test Video' : 'Generate Video' }}</span>
                     </button>
                 </div>
             </div>

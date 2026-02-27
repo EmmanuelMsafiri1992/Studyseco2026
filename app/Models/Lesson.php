@@ -43,6 +43,7 @@ class Lesson extends Model
         'heygen_error',
         'heygen_started_at',
         'heygen_completed_at',
+        'heygen_test_mode',
     ];
 
     protected $casts = [
@@ -56,6 +57,7 @@ class Lesson extends Model
         'transcoding_progress' => 'integer',
         'heygen_started_at' => 'datetime',
         'heygen_completed_at' => 'datetime',
+        'heygen_test_mode' => 'boolean',
     ];
 
     protected $appends = [

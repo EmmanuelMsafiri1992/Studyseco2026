@@ -93,6 +93,7 @@ class GenerateHeyGenVideoJob implements ShouldQueue
                         'width' => 1920,
                         'height' => 1080,
                     ],
+                    'test' => $this->lesson->heygen_test_mode ?? false,
                 ]
             );
 

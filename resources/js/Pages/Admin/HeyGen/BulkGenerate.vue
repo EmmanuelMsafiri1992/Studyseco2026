@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { Head } from '@inertiajs/vue3';
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import DashboardLayout from '@/Layouts/DashboardLayout.vue';
 import axios from 'axios';
 
 const props = defineProps({
@@ -351,7 +351,7 @@ onUnmounted(() => {
 <template>
     <Head title="Bulk AI Video Generation" />
 
-    <AuthenticatedLayout>
+    <DashboardLayout>
         <template #header>
             <div class="flex items-center justify-between">
                 <div>
@@ -732,5 +732,5 @@ onUnmounted(() => {
                 </div>
             </div>
         </div>
-    </AuthenticatedLayout>
+    </DashboardLayout>
 </template>

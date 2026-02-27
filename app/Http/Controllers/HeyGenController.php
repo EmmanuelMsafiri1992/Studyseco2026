@@ -109,6 +109,7 @@ class HeyGenController extends Controller
             'script' => 'required|string|min:10|max:10000',
             'avatar_id' => 'required|string',
             'voice_id' => 'required|string',
+            'test_mode' => 'boolean',
         ]);
 
         // Check if already generating
@@ -128,6 +129,7 @@ class HeyGenController extends Controller
                 'heygen_status' => 'pending',
                 'heygen_error' => null,
                 'heygen_video_id' => null,
+                'heygen_test_mode' => $validated['test_mode'] ?? false,
             ]);
 
             // Dispatch job
