@@ -556,20 +556,19 @@ Route::middleware('auth')->group(function () {
         Route::delete('/students/{user}', [\App\Http\Controllers\StudentController::class, 'destroy'])->name('students.destroy');
     });
 
-    // Teacher Management Routes (Admin and Teachers can access)
-    Route::middleware('role:admin,teacher')->group(function () {
-        Route::get('/teachers', [\App\Http\Controllers\TeacherController::class, 'index'])->name('teachers.index');
-        Route::get('/teachers/{user}', [\App\Http\Controllers\TeacherController::class, 'show'])->name('teachers.show');
-    });
-
-    
-    // Admin-only teacher management operations
+    // Admin-only teacher management operations (must be before parameterized routes)
     Route::middleware('role:admin')->group(function () {
         Route::get('/teachers/create', [\App\Http\Controllers\TeacherController::class, 'create'])->name('teachers.create');
         Route::post('/teachers', [\App\Http\Controllers\TeacherController::class, 'store'])->name('teachers.store');
         Route::get('/teachers/{user}/edit', [\App\Http\Controllers\TeacherController::class, 'edit'])->name('teachers.edit');
         Route::put('/teachers/{user}', [\App\Http\Controllers\TeacherController::class, 'update'])->name('teachers.update');
         Route::delete('/teachers/{user}', [\App\Http\Controllers\TeacherController::class, 'destroy'])->name('teachers.destroy');
+    });
+
+    // Teacher Management Routes (Admin and Teachers can access)
+    Route::middleware('role:admin,teacher')->group(function () {
+        Route::get('/teachers', [\App\Http\Controllers\TeacherController::class, 'index'])->name('teachers.index');
+        Route::get('/teachers/{user}', [\App\Http\Controllers\TeacherController::class, 'show'])->name('teachers.show');
     });
 
     // Public navigation routes - accessible to all authenticated users
