@@ -61,6 +61,9 @@ class TeacherController extends Controller
             'is_active' => true,
         ]);
 
+        // Assign the teacher role for the permission system
+        $teacher->assignRole('teacher', auth()->id());
+
         return redirect()->route('teachers.index')->with('success', 'Teacher created successfully.');
     }
 
